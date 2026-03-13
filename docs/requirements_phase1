@@ -1,0 +1,256 @@
+# Phase 1 – Setup & Datenbankmodelle
+
+## Ziel
+Lauffähige Flask-Grundstruktur mit vollständig migrierten Datenbankmodellen auf MSSQL.
+Nach Abschluss dieser Phase ist die App startbar, die Datenbank verbunden und alle Tabellen angelegt.
+
+---
+
+## Kontext
+- **Repo:** Dieses Repository – bitte bestehende Dateien nicht überschreiben, sondern ergänzen.
+- **Datenbank:** MSSQL (SQL Server) – Verbindungsdaten werden via `.env` injiziert.
+- **Deployment-Ziel:** Linux-VM (Schule) – kein Windows-spezifischer Code.
+- **Python:** 3.9+
+- **Schema-Referenz:** `docs/db_schema.md`
+
+---
+
+## Aufgaben
+
+### 1. Abhängigkeiten (`requirements.txt`)
+
+Folgende Pakete müssen enthalten sein:
+
+```
+flask
+flask-sqlalchemy
+flask-migrate
+flask-login
+flask-wtf
+pyodbc
+python-dotenv
+gunicorn
+werkzeug
+```
+
+> Für Windows-Authentifizierung wird `pyodbc` verwendet. `pymssql` wird nicht benötigt.
+> Auf der Linux-VM der Schule wird später der ODBC-Treiber installiert – das wird in Phase 5 (Deployment) behandelt.
+
+---
+
+### 2. Projektstruktur anlegen
+
+Folgende Struktur exakt so anlegen:
+
+```
+app/
+├── __init__.py          # create_app() Factory
+├── extensions.py        # db, login_manager, migrate
+├── config.py            # Config-Klassen
+├── models/
+│   ├── __init__.py
+│   ├── user.py
+│   ├── scooter.py
+│   ├── tariff.py
+│   ├── ride.py
+│   ├── payment_method.py
+│   └── transaction.py
+├── blueprints/
+│   ├── main/
+│   │   └── __init__.py
+│   ├── auth/
+│   │   └── __init__.py
+│   └── api/
+│       └── __init__.py
+├── templates/
+│   └── base.html        # Minimales HTML-Grundgerüst
+└── static/
+    └── .gitkeep
+run.py                   # Einstiegspunkt (development)
+.env.example             # Beispiel-Umgebungsvariablen
+.gitignore               # .env und __pycache__ ausschliessen
+```
+
+---
+
+### 3. `app/config.py`
+
+Drei Konfigurationsklassen:
+
+```python
+class Config:          # Basisklasse mit gemeinsamen Einstellungen
+class DevelopmentConfig(Config):   # DEBUG=True, lokales MSSQL
+class ProductionConfig(Config):    # DEBUG=False, MSSQL auf VM
+```
+
+Folgende Werte werden aus Umgebungsvariablen gelesen (via `os.environ.get`):
+
+| Variable             | Beschreibung                              |
+|----------------------|-------------------------------------------|
+| `SECRET_KEY`         | Flask Session-Key                         |
+| `DATABASE_URL`       | SQLAlchemy Connection String (MSSQL)      |
+| `FLASK_ENV`          | 'development' oder 'production'           |
+
+Connection String Format für Windows-Authentifizierung mit pyodbc:
+```
+mssql+pyodbc://localhost/scooter_db?driver=ODBC+Driver+17+for+SQL+Server&trusted_connection=yes
+```
+
+Falls der ODBC Driver 17 nicht installiert ist, kann auch Driver 18 verwendet werden:
+```
+mssql+pyodbc://localhost/scooter_db?driver=ODBC+Driver+18+for+SQL+Server&trusted_connection=yes&TrustServerCertificate=yes
+```
+
+`DevelopmentConfig` liest den Connection String aus der `.env`:
+```python
+SQLALCHEMY_DATABASE_URI = os.environ.get('DATABASE_URL')
+```
+
+---
+
+### 4. `app/extensions.py`
+
+```python
+from flask_sqlalchemy import SQLAlchemy
+from flask_login import LoginManager
+from flask_migrate import Migrate
+
+db = SQLAlchemy()
+login_manager = LoginManager()
+migrate = Migrate()
+```
+
+Kein direkter App-Import hier – Initialisierung erfolgt in `create_app()`.
+
+---
+
+### 5. `app/__init__.py` – App Factory
+
+```python
+def create_app(config_name='development'):
+    app = Flask(__name__)
+    # Config laden
+    # Extensions initialisieren: db, login_manager, migrate
+    # Blueprints registrieren: main, auth (/auth), api (/api)
+    return app
+```
+
+Die Blueprints in Phase 1 dürfen **Platzhalter** sein (eine Route `/` die `200 OK` zurückgibt genügt).
+
+---
+
+### 6. SQLAlchemy-Modelle
+
+Alle Modelle basieren auf dem Schema in `docs/db_schema.md`.
+Primärschlüssel sind vom Typ `UNIQUEIDENTIFIER` – in SQLAlchemy als `db.String(36)` mit `default=lambda: str(uuid.uuid4())`.
+
+#### `models/user.py`
+- Felder: `uid`, `vorname`, `nachname`, `username`, `email`, `passwort_hash`, `user_rolle`, `status`, `last_login`, `created_at`
+- Implementiert `UserMixin` von Flask-Login
+- Methoden: `set_password(password)`, `check_password(password)` via `werkzeug.security`
+- Relationship: `scooters` (backref), `rides` (backref), `payment_methods` (backref)
+
+#### `models/scooter.py`
+- Felder: `uid`, `uid_provider` (FK → users.uid), `model`, `qr_code`, `status`, `gefahrene_km_gesamt`, `battery_level`, `latitude`, `longitude`, `created_at`
+- Methode: `to_dict()` für API-Serialisierung
+- Relationship: `rides` (backref)
+
+#### `models/tariff.py`
+- Felder: `uid`, `base_price`, `minute_price`, `valid_from`, `valid_to`, `is_active`
+- Klassenmethode: `get_active()` → gibt den aktuell aktiven Tarif zurück
+- Relationship: `rides` (backref)
+
+#### `models/ride.py`
+- Felder: `uid`, `rider_uid` (FK → users.uid), `scooter_uid` (FK → scooters.uid), `tarif_uid` (FK → tariffs.uid), `startzeit`, `endzeit`, `gesamtpreis`, `gefahrene_km`, `created_at`
+- Methode: `calculate_price()` → berechnet Preis aus Tarif × Minuten + Basispreis
+- Methode: `to_dict()` für API-Serialisierung
+- Relationship: `transaction` (backref)
+
+#### `models/payment_method.py`
+- Felder: `uid`, `rider_uid` (FK → users.uid), `kartenidentifier_maskiert`, `is_active`, `created_at`
+- Relationship: `transactions` (backref)
+
+#### `models/transaction.py`
+- Felder: `uid`, `ride_uid` (FK → rides.uid), `payment_method_uid` (FK → payment_methods.uid), `betrag`, `status`, `created_at`
+
+#### `models/__init__.py`
+Alle Modelle hier importieren, damit Flask-Migrate sie erkennt:
+```python
+from .user import User
+from .scooter import Scooter
+from .tariff import Tariff
+from .ride import Ride
+from .payment_method import PaymentMethod
+from .transaction import Transaction
+```
+
+---
+
+### 7. `.env.example`
+
+```
+SECRET_KEY=change-me
+FLASK_ENV=development
+
+# Windows-Authentifizierung (lokal):
+DATABASE_URL=mssql+pyodbc://localhost/scooter_db?driver=ODBC+Driver+17+for+SQL+Server&trusted_connection=yes
+
+# Falls ODBC Driver 18 installiert ist:
+# DATABASE_URL=mssql+pyodbc://localhost/scooter_db?driver=ODBC+Driver+18+for+SQL+Server&trusted_connection=yes&TrustServerCertificate=yes
+
+# Produktion (MSSQL auf VM, wird in Phase 5 konfiguriert):
+# DATABASE_URL=mssql+pymssql://user:password@host:1433/scooter_db
+```
+
+`.env` selbst **nicht** ins Repo committen – im `.gitignore` ausschliessen.
+
+---
+
+### 8. `run.py`
+
+```python
+from app import create_app
+
+app = create_app('development')
+
+if __name__ == '__main__':
+    app.run(debug=True)
+```
+
+---
+
+### 9. Flask-Migrate initialisieren
+
+Nach Erstellung aller Modelle:
+```bash
+flask db init
+flask db migrate -m "initial schema"
+flask db upgrade
+```
+
+Die Migration soll alle 6 Tabellen anlegen: `users`, `scooters`, `tariffs`, `rides`, `payment_methods`, `transactions`.
+
+---
+
+## Acceptance Criteria
+
+Phase 1 gilt als abgeschlossen wenn:
+
+- [ ] `python run.py` startet ohne Fehler
+- [ ] `GET /` gibt HTTP 200 zurück
+- [ ] `flask db upgrade` läuft durch ohne Fehler
+- [ ] Alle 6 Tabellen sind in der MSSQL-Datenbank angelegt (überprüfbar via SQL Server Management Studio oder `flask shell`)
+- [ ] `flask shell` → `from app.models import User, Scooter` funktioniert ohne Import-Fehler
+- [ ] `.env` ist nicht im Repo, `.env.example` ist vorhanden
+- [ ] `requirements.txt` ist vollständig und `pip install -r requirements.txt` läuft durch
+
+---
+
+## Hinweise für Claude Code
+
+- Keine Business-Logik über das in den Modellen beschriebene hinaus – das kommt in Phase 3.
+- Blueprint-Routen dürfen in Phase 1 minimal sein (Platzhalter).
+- Alle Datenbankverbindungs-Parameter kommen aus der `.env` – keine Hardcoded-Werte.
+- Kommentare auf Deutsch oder Englisch, konsistent pro Datei.
+- **Lokal Windows-Authentifizierung, auf VM SQL Login** – lokal wird `pyodbc` mit `trusted_connection=yes` verwendet. Für die Linux-VM in Phase 5 wird auf `pymssql` oder `pyodbc` mit SQL-Login umgestellt – das ist nur eine Änderung in der `.env`.
+- **ODBC-Treiberversion prüfen:** Der Connection String enthält Driver 17 als Standard. Falls nur Driver 18 installiert ist, muss `TrustServerCertificate=yes` ergänzt werden (bereits im `.env.example` kommentiert).
