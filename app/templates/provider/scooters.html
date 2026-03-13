@@ -1,0 +1,137 @@
+{% extends 'base.html' %}
+
+{% block title %}Meine Scooter – E-Scooter Verleih{% endblock %}
+
+{% block head %}
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<style>
+  #scooter-map { height: 380px; border-radius: var(--radius); border: 1px solid var(--border-color); margin-bottom: 1.75rem; }
+  .leaflet-popup-content-wrapper { background: #1f2937; color: #f9fafb; border: 1px solid rgba(255,255,255,0.1); }
+  .leaflet-popup-tip { background: #1f2937; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-header d-flex justify-content-between align-items-center flex-wrap gap-2">
+    <h1>&#128740; Meine Scooter</h1>
+    <a href="{{ url_for('provider.scooter_add') }}" class="btn btn-primary">+ Scooter hinzufügen</a>
+</div>
+
+{% set scooters_with_loc = scooters | selectattr('latitude') | list %}
+{% if scooters_with_loc %}
+<div id="scooter-map"></div>
+{% endif %}
+
+{% if scooters %}
+<div class="table-responsive mt-1">
+    <table class="table table-striped table-hover align-middle">
+        <thead>
+            <tr>
+                <th>Modell</th>
+                <th>QR-Code</th>
+                <th>Status</th>
+                <th>Akku (%)</th>
+                <th>KM gesamt</th>
+                <th>Aktionen</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for scooter in scooters %}
+            <tr {% if scooter.battery_level < 25 %}class="table-row-low-battery"{% endif %}>
+                <td><strong>{{ scooter.model }}</strong></td>
+                <td><small class="text-muted font-monospace">{{ scooter.qr_code }}</small></td>
+                <td>
+                    {% if scooter.status == 'available' %}
+                        <span class="badge bg-success">Verfügbar</span>
+                    {% elif scooter.status == 'rented' %}
+                        <span class="badge bg-primary">Verliehen</span>
+                    {% elif scooter.status == 'maintenance' %}
+                        <span class="badge bg-warning">Wartung</span>
+                    {% elif scooter.status == 'disabled' %}
+                        <span class="badge bg-secondary">Deaktiviert</span>
+                    {% else %}
+                        <span class="badge bg-secondary">{{ scooter.status }}</span>
+                    {% endif %}
+                </td>
+                <td>
+                    {{ scooter.battery_level }}%
+                    {% if scooter.battery_level < 25 %}
+                        <span title="Akku niedrig – Aufladung nötig">&#9889;</span>
+                    {% endif %}
+                </td>
+                <td>{{ scooter.gefahrene_km_gesamt }}</td>
+                <td>
+                    <div class="d-flex gap-1">
+                        <a href="{{ url_for('provider.scooter_edit', uid=scooter.uid) }}"
+                           class="btn btn-sm btn-outline-primary">Bearbeiten</a>
+                        <form method="POST"
+                              action="{{ url_for('provider.scooter_delete', uid=scooter.uid) }}"
+                              onsubmit="return confirm('Scooter wirklich deaktivieren?')">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                            <button type="submit" class="btn btn-sm btn-danger">Deaktivieren</button>
+                        </form>
+                    </div>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% else %}
+<div class="alert alert-info mt-2">
+    Sie haben noch keine Scooter hinzugefügt.
+    <a href="{{ url_for('provider.scooter_add') }}" class="alert-link">Jetzt ersten Scooter hinzufügen.</a>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+{% set scooters_with_loc = scooters | selectattr('latitude') | list %}
+{% if scooters_with_loc %}
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+const scooterData = [
+  {% for s in scooters_with_loc %}
+  {
+    lat: {{ s.latitude }},
+    lng: {{ s.longitude }},
+    model: {{ s.model | tojson }},
+    status: {{ s.status | tojson }},
+    battery: {{ s.battery_level }}
+  }{% if not loop.last %},{% endif %}
+  {% endfor %}
+];
+
+const statusColor = { available: '#10b981', rented: '#6366f1', maintenance: '#f59e0b', disabled: '#6b7280' };
+
+const map = L.map('scooter-map');
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+  attribution: '© OpenStreetMap',
+  maxZoom: 19
+}).addTo(map);
+
+const bounds = [];
+scooterData.forEach(s => {
+  const color = statusColor[s.status] || '#6b7280';
+  const icon = L.divIcon({
+    className: '',
+    html: `<div style="width:14px;height:14px;border-radius:50%;background:${color};border:2px solid #fff;box-shadow:0 0 4px rgba(0,0,0,0.5)"></div>`,
+    iconSize: [14, 14],
+    iconAnchor: [7, 7],
+    popupAnchor: [0, -10]
+  });
+  const statusLabels = { available: 'Verfügbar', rented: 'Verliehen', maintenance: 'Wartung', disabled: 'Deaktiviert' };
+  L.marker([s.lat, s.lng], { icon })
+    .addTo(map)
+    .bindPopup(`<strong>${s.model}</strong><br>${statusLabels[s.status] || s.status}<br>Akku: ${s.battery}%`);
+  bounds.push([s.lat, s.lng]);
+});
+
+if (bounds.length === 1) {
+  map.setView(bounds[0], 15);
+} else {
+  map.fitBounds(bounds, { padding: [40, 40] });
+}
+</script>
+{% endif %}
+{% endblock %}

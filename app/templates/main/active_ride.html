@@ -1,0 +1,43 @@
+{% extends 'base.html' %}
+
+{% block title %}Aktive Fahrt – E-Scooter Verleih{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>&#9889; Aktive Fahrt</h1>
+</div>
+
+<div class="card" style="max-width:600px;">
+    <div class="card-body">
+        <h5 class="card-title mb-0">{{ scooter.model }}</h5>
+        <p class="text-muted mt-1 mb-3" style="font-size:0.8125rem;">QR-Code: <code>{{ scooter.qr_code }}</code></p>
+
+        <hr>
+
+        <dl class="row mb-0">
+            <dt class="col-sm-4">Startzeit</dt>
+            <dd class="col-sm-8">{{ ride.startzeit.strftime('%d.%m.%Y %H:%M:%S') }} UTC</dd>
+
+            <dt class="col-sm-4">Laufende Dauer</dt>
+            <dd class="col-sm-8">
+                <span class="badge bg-info" style="font-size:0.9375rem; padding:0.4em 0.75em;">{{ duration_str }}</span>
+            </dd>
+
+            <dt class="col-sm-4">Kostenvorschau</dt>
+            <dd class="col-sm-8">
+                <strong style="font-size:1.1rem; color:var(--warning);">CHF {{ '%.2f'|format(vorschau|float) }}</strong>
+            </dd>
+
+            <dt class="col-sm-4">Tarif</dt>
+            <dd class="col-sm-8" style="color:var(--text-muted); font-size:0.875rem;">
+                Basispreis CHF {{ '%.2f'|format(tariff.base_price|float) }} +
+                CHF {{ '%.2f'|format(tariff.minute_price|float) }} / Minute
+            </dd>
+        </dl>
+
+        <div class="mt-4">
+            <a href="/rides/end/{{ ride.uid }}" class="btn btn-danger">&#9634; Fahrt beenden</a>
+        </div>
+    </div>
+</div>
+{% endblock %}

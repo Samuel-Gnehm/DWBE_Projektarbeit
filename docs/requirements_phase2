@@ -1,0 +1,243 @@
+# Phase 2 – Auth & User Management
+
+## Ziel
+Vollständige Benutzerregistrierung, Login und Logout mit Rollenkonzept.
+Nach Abschluss dieser Phase kann sich ein Benutzer registrieren, einloggen und wird je nach Rolle (`provider`, `user` oder `admin`) auf die richtige Seite weitergeleitet.
+
+---
+
+## Kontext
+- Phase 1 ist abgeschlossen – Projektstruktur, Modelle und DB-Migration sind vorhanden.
+- Bitte bestehende Dateien nicht überschreiben, sondern ergänzen.
+- Alle Modelle sind in `app/models/` verfügbar.
+- Blueprint `auth` ist als Platzhalter bereits registriert unter `/auth`.
+
+---
+
+## Aufgaben
+
+### 1. Blueprint `auth` ausbauen (`app/blueprints/auth/__init__.py`)
+
+Folgende Routen implementieren:
+
+| Methode | Route            | Beschreibung                          |
+|---------|------------------|---------------------------------------|
+| GET     | `/auth/register` | Registrierungsformular anzeigen       |
+| POST    | `/auth/register` | Formulardaten verarbeiten, User anlegen |
+| GET     | `/auth/login`    | Login-Formular anzeigen               |
+| POST    | `/auth/login`    | Login verarbeiten, Session starten    |
+| GET     | `/auth/logout`   | Session beenden, Redirect zu `/`      |
+
+---
+
+### 2. Formulare (`app/blueprints/auth/forms.py`)
+
+Mit Flask-WTF:
+
+**`RegistrationForm`:**
+- `vorname` – StringField, Required
+- `nachname` – StringField, Required
+- `username` – StringField, Required, Length(3–50)
+- `email` – EmailField, Required
+- `password` – PasswordField, Required, Length(min=8)
+- `password_confirm` – PasswordField, EqualTo('password')
+- `user_rolle` – SelectField, Choices: `[('user', 'Fahrer'), ('provider', 'Anbieter')]`
+  > `admin` ist **keine wählbare Option** im Registrierungsformular – Admin-User werden nur manuell per Seed-Script angelegt.
+- Validierung: Username und Email dürfen nicht bereits in der DB existieren (Custom Validator)
+
+**`LoginForm`:**
+- `username` – StringField, Required
+- `password` – PasswordField, Required
+- `remember` – BooleanField
+
+---
+
+### 3. Routen-Logik
+
+**Register (`POST /auth/register`):**
+1. Formular validieren
+2. Prüfen ob Username/Email bereits vergeben (Flash-Message bei Fehler)
+3. `User`-Objekt erstellen, `set_password()` aufrufen
+4. `status='active'`, `created_at=datetime.utcnow()`
+5. In DB speichern (`db.session.add`, `db.session.commit`)
+6. Redirect zu `/auth/login` mit Erfolgs-Flash-Message
+
+**Login (`POST /auth/login`):**
+1. Formular validieren
+2. User per Username aus DB laden
+3. `check_password()` aufrufen
+4. Bei Erfolg: `login_user()`, `last_login` aktualisieren, commit
+5. Weiterleitung je nach Rolle:
+   - `admin` → `/admin/dashboard`
+   - `provider` → `/provider/dashboard`
+   - `user` → `/dashboard`
+6. Bei Fehler: Flash-Message, zurück zum Login
+
+**Logout (`GET /auth/logout`):**
+1. `logout_user()` aufrufen
+2. Redirect zu `/auth/login`
+
+---
+
+### 4. Flask-Login konfigurieren (`app/extensions.py` / `app/__init__.py`)
+
+```python
+login_manager.login_view = 'auth.login'
+login_manager.login_message = 'Bitte zuerst einloggen.'
+login_manager.login_message_category = 'warning'
+
+@login_manager.user_loader
+def load_user(user_id):
+    from app.models import User
+    return User.query.get(user_id)
+```
+
+---
+
+### 5. Zugriffsschutz
+
+Hilfsfunktion für Rollenprüfung anlegen (`app/utils.py`):
+
+```python
+from functools import wraps
+from flask import abort
+from flask_login import current_user
+
+def provider_required(f):
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        if current_user.user_rolle != 'provider':
+            abort(403)
+        return f(*args, **kwargs)
+    return decorated
+
+def rider_required(f):
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        if current_user.user_rolle != 'user':
+            abort(403)
+        return f(*args, **kwargs)
+    return decorated
+
+def admin_required(f):
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        if current_user.user_rolle != 'admin':
+            abort(403)
+        return f(*args, **kwargs)
+    return decorated
+```
+
+---
+
+### 6. Blueprint `main` ausbauen
+
+| Methode | Route        | Beschreibung                                      |
+|---------|--------------|---------------------------------------------------|
+| GET     | `/`          | Startseite – Redirect zu Login falls nicht eingeloggt, sonst zu Dashboard |
+| GET     | `/dashboard` | Rider-Dashboard (Platzhalter, `@login_required`)  |
+| GET     | `/provider/dashboard` | Provider-Dashboard (Platzhalter, `@login_required`, `@provider_required`) |
+| GET     | `/admin/dashboard` | Admin-Dashboard (Platzhalter, `@login_required`, `@admin_required`) |
+
+---
+
+### 7. Seed-Script für Admin-User (`seed.py` im Projektstamm)
+
+Da Admin sich nicht über das Registrierungsformular anmelden kann, muss ein initialer Admin-User per Script angelegt werden:
+
+```python
+# Aufruf: python seed.py
+from app import create_app
+from app.extensions import db
+from app.models import User
+
+app = create_app('development')
+
+with app.app_context():
+    if not User.query.filter_by(username='admin').first():
+        admin = User(
+            vorname='Admin',
+            nachname='Admin',
+            username='admin',
+            email='admin@escooter.local',
+            user_rolle='admin',
+            status='active'
+        )
+        admin.set_password('Admin1234!')
+        db.session.add(admin)
+        db.session.commit()
+        print("Admin-User erstellt: admin / Admin1234!")
+    else:
+        print("Admin-User existiert bereits.")
+```
+
+> Das Script einmalig nach `flask db upgrade` ausführen: `python seed.py`
+
+Die Dashboards sind in Phase 2 noch Platzhalter – einfache Templates die den eingeloggten Username anzeigen.
+
+---
+
+### 8. Templates
+
+Alle Templates erben von `templates/base.html`.
+
+**`base.html` ausbauen:**
+- Navbar mit Login/Logout-Link (konditionell je nach `current_user.is_authenticated`)
+- Flash-Messages anzeigen (Bootstrap Alert-Styling)
+- Bootstrap 5 via CDN einbinden
+
+**Benötigte Templates:**
+- `auth/register.html` – Registrierungsformular
+- `auth/login.html` – Login-Formular
+- `main/dashboard.html` – Rider-Dashboard (Platzhalter)
+- `main/provider_dashboard.html` – Provider-Dashboard (Platzhalter)
+- `main/admin_dashboard.html` – Admin-Dashboard (Platzhalter, zeigt alle 3 Rollen-Bereiche als Links)
+
+Formulare mit CSRF-Token (`{{ form.hidden_tag() }}`), Fehleranzeige pro Feld.
+
+---
+
+### 9. Fehlerseiten
+
+Zwei einfache Error-Handler in `app/__init__.py`:
+
+```python
+@app.errorhandler(403)
+def forbidden(e):
+    return render_template('errors/403.html'), 403
+
+@app.errorhandler(404)
+def not_found(e):
+    return render_template('errors/404.html'), 404
+```
+
+Templates `templates/errors/403.html` und `templates/errors/404.html` anlegen.
+
+---
+
+## Acceptance Criteria
+
+Phase 2 gilt als abgeschlossen wenn:
+
+- [ ] `GET /auth/register` zeigt ein Formular an
+- [ ] Registrierung mit gültigen Daten legt einen neuen User in der DB an (überprüfbar via `flask shell` oder SSMS)
+- [ ] Passwort wird **gehasht** gespeichert (nicht als Klartext in der DB)
+- [ ] Doppelter Username oder E-Mail zeigt eine verständliche Fehlermeldung
+- [ ] Login mit korrekten Daten startet eine Session und leitet weiter
+- [ ] Login mit falschem Passwort zeigt eine Fehlermeldung
+- [ ] `GET /auth/logout` beendet die Session und leitet zu `/auth/login`
+- [ ] Geschützte Routen (`/dashboard`, `/provider/dashboard`) leiten nicht eingeloggte User zu `/auth/login` weiter
+- [ ] Ein `provider`-User kann nicht auf `/dashboard` (Rider) zugreifen und umgekehrt (403)
+- [ ] `python seed.py` legt einen Admin-User an (überprüfbar in DB)
+- [ ] Admin-Login leitet zu `/admin/dashboard` weiter
+- [ ] `/admin/dashboard` ist nicht zugänglich für `provider` oder `user` (403)
+
+---
+
+## Hinweise für Claude Code
+
+- `login_manager.user_loader` muss den User anhand der `uid` (String, UUID) laden – nicht anhand eines Integer-IDs.
+- CSRF-Schutz ist durch Flask-WTF automatisch aktiv – `{{ form.hidden_tag() }}` in jedem Formular nicht vergessen.
+- Flash-Messages in `base.html` anzeigen, nicht in einzelnen Templates.
+- Keine Logik in den Templates – nur Darstellung.
+- `utils.py` in `app/` ablegen, nicht in einem Blueprint.

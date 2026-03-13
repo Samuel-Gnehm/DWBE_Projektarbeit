@@ -1,0 +1,63 @@
+{% extends 'base.html' %}
+
+{% block title %}{{ title }} – E-Scooter Verleih{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>{{ title }}</h1>
+</div>
+
+<div class="card" style="max-width:560px;">
+    <div class="card-body">
+        <form method="POST">
+            {{ form.hidden_tag() }}
+
+            <div class="mb-3">
+                {{ form.model.label(class='form-label') }}
+                {{ form.model(class='form-control' + (' is-invalid' if form.model.errors else '')) }}
+                {% for error in form.model.errors %}
+                    <div class="invalid-feedback">{{ error }}</div>
+                {% endfor %}
+            </div>
+
+            <div class="mb-3">
+                {{ form.battery_level.label(class='form-label') }}
+                {{ form.battery_level(class='form-control' + (' is-invalid' if form.battery_level.errors else '')) }}
+                {% for error in form.battery_level.errors %}
+                    <div class="invalid-feedback">{{ error }}</div>
+                {% endfor %}
+            </div>
+
+            <div class="row g-3 mb-3">
+                <div class="col">
+                    {{ form.latitude.label(class='form-label') }}
+                    {{ form.latitude(class='form-control' + (' is-invalid' if form.latitude.errors else ''), placeholder='z.B. 47.376887') }}
+                    {% for error in form.latitude.errors %}
+                        <div class="invalid-feedback">{{ error }}</div>
+                    {% endfor %}
+                </div>
+                <div class="col">
+                    {{ form.longitude.label(class='form-label') }}
+                    {{ form.longitude(class='form-control' + (' is-invalid' if form.longitude.errors else ''), placeholder='z.B. 8.541694') }}
+                    {% for error in form.longitude.errors %}
+                        <div class="invalid-feedback">{{ error }}</div>
+                    {% endfor %}
+                </div>
+            </div>
+
+            <div class="mb-4">
+                {{ form.status.label(class='form-label') }}
+                {{ form.status(class='form-select' + (' is-invalid' if form.status.errors else '')) }}
+                {% for error in form.status.errors %}
+                    <div class="invalid-feedback">{{ error }}</div>
+                {% endfor %}
+            </div>
+
+            <div class="d-flex gap-2">
+                <button type="submit" class="btn btn-primary">Speichern</button>
+                <a href="{{ url_for('provider.scooters') }}" class="btn btn-outline-secondary">Abbrechen</a>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}

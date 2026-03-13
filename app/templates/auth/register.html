@@ -1,0 +1,84 @@
+{% extends 'base.html' %}
+
+{% block title %}Registrieren – E-Scooter Verleih{% endblock %}
+
+{% block content %}
+<div class="auth-wrapper">
+    <div class="auth-card wide">
+        <div class="text-center mb-4">
+            <div style="font-size:2.5rem; margin-bottom:0.5rem;">&#128740;</div>
+            <h1 class="auth-title">Konto erstellen</h1>
+            <p class="auth-subtitle mb-0">Registriere dich für den E-Scooter Verleih</p>
+        </div>
+
+        <form method="POST" action="{{ url_for('auth.register') }}">
+            {{ form.hidden_tag() }}
+
+            <div class="row g-3">
+                <div class="col-6">
+                    {{ form.vorname.label(class='form-label') }}
+                    {{ form.vorname(class='form-control' + (' is-invalid' if form.vorname.errors else ''), placeholder='Max') }}
+                    {% for error in form.vorname.errors %}
+                        <div class="invalid-feedback">{{ error }}</div>
+                    {% endfor %}
+                </div>
+                <div class="col-6">
+                    {{ form.nachname.label(class='form-label') }}
+                    {{ form.nachname(class='form-control' + (' is-invalid' if form.nachname.errors else ''), placeholder='Mustermann') }}
+                    {% for error in form.nachname.errors %}
+                        <div class="invalid-feedback">{{ error }}</div>
+                    {% endfor %}
+                </div>
+            </div>
+
+            <div class="mb-3 mt-3">
+                {{ form.username.label(class='form-label') }}
+                {{ form.username(class='form-control' + (' is-invalid' if form.username.errors else ''), placeholder='benutzername123') }}
+                {% for error in form.username.errors %}
+                    <div class="invalid-feedback">{{ error }}</div>
+                {% endfor %}
+            </div>
+
+            <div class="mb-3">
+                {{ form.email.label(class='form-label') }}
+                {{ form.email(class='form-control' + (' is-invalid' if form.email.errors else ''), placeholder='max@beispiel.ch') }}
+                {% for error in form.email.errors %}
+                    <div class="invalid-feedback">{{ error }}</div>
+                {% endfor %}
+            </div>
+
+            <div class="mb-3">
+                {{ form.password.label(class='form-label') }}
+                {{ form.password(class='form-control' + (' is-invalid' if form.password.errors else ''), placeholder='••••••••') }}
+                {% for error in form.password.errors %}
+                    <div class="invalid-feedback">{{ error }}</div>
+                {% endfor %}
+            </div>
+
+            <div class="mb-3">
+                {{ form.password_confirm.label(class='form-label') }}
+                {{ form.password_confirm(class='form-control' + (' is-invalid' if form.password_confirm.errors else ''), placeholder='••••••••') }}
+                {% for error in form.password_confirm.errors %}
+                    <div class="invalid-feedback">{{ error }}</div>
+                {% endfor %}
+            </div>
+
+            <div class="mb-4">
+                {{ form.user_rolle.label(class='form-label') }}
+                {{ form.user_rolle(class='form-select' + (' is-invalid' if form.user_rolle.errors else '')) }}
+                {% for error in form.user_rolle.errors %}
+                    <div class="invalid-feedback">{{ error }}</div>
+                {% endfor %}
+            </div>
+
+            <button type="submit" class="btn btn-primary w-100" style="padding:0.65rem;">Konto erstellen</button>
+        </form>
+
+        <hr class="auth-divider">
+        <p class="text-center mb-0" style="font-size:0.875rem; color:var(--text-muted);">
+            Bereits registriert?
+            <a href="{{ url_for('auth.login') }}" style="color:var(--accent-hover); text-decoration:none; font-weight:500;">Jetzt einloggen</a>
+        </p>
+    </div>
+</div>
+{% endblock %}

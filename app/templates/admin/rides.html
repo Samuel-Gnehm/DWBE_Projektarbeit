@@ -1,0 +1,59 @@
+{% extends 'base.html' %}
+{% block title %}Alle Fahrten – Admin{% endblock %}
+{% block content %}
+<div class="page-header">
+    <h1>&#128337; Alle Fahrten</h1>
+</div>
+
+<div class="mb-3 d-flex gap-2 flex-wrap">
+    <a href="{{ url_for('admin.rides') }}" class="btn btn-sm {% if not status_filter %}btn-dark{% else %}btn-outline-dark{% endif %}">Alle</a>
+    <a href="{{ url_for('admin.rides', status='active') }}" class="btn btn-sm {% if status_filter == 'active' %}btn-primary{% else %}btn-outline-primary{% endif %}">Aktiv</a>
+    <a href="{{ url_for('admin.rides', status='completed') }}" class="btn btn-sm {% if status_filter == 'completed' %}btn-success{% else %}btn-outline-success{% endif %}">Abgeschlossen</a>
+</div>
+
+<div class="table-responsive">
+    <table class="table table-striped table-hover">
+        <thead>
+            <tr>
+                <th>Fahrer</th>
+                <th>Scooter</th>
+                <th>Startzeit</th>
+                <th>Endzeit</th>
+                <th>Dauer</th>
+                <th>KM</th>
+                <th>Preis</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for ride in rides %}
+            <tr>
+                <td>{{ ride.rider.username if ride.rider else '–' }}</td>
+                <td>{{ ride.scooter.model if ride.scooter else '–' }}</td>
+                <td>{{ ride.startzeit.strftime('%d.%m.%Y %H:%M') }}</td>
+                <td>
+                    {% if ride.endzeit %}
+                        {{ ride.endzeit.strftime('%d.%m.%Y %H:%M') }}
+                    {% else %}
+                        <span class="badge bg-primary">aktiv</span>
+                    {% endif %}
+                </td>
+                <td>
+                    {% if ride.endzeit %}
+                        {% set sec = (ride.endzeit - ride.startzeit).total_seconds()|int %}
+                        {{ '%02d:%02d'|format(sec // 3600, (sec % 3600) // 60) }}
+                    {% else %}
+                        –
+                    {% endif %}
+                </td>
+                <td>{{ ride.gefahrene_km }}</td>
+                <td>{{ 'CHF %.2f'|format(ride.gesamtpreis) if ride.gesamtpreis else '–' }}</td>
+                <td><a href="{{ url_for('admin.ride_detail', uid=ride.uid) }}" class="btn btn-sm btn-outline-primary">Details</a></td>
+            </tr>
+            {% else %}
+            <tr><td colspan="8" class="text-center text-muted">Keine Fahrten gefunden.</td></tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endblock %}

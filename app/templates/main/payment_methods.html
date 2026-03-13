@@ -1,0 +1,65 @@
+{% extends 'base.html' %}
+
+{% block title %}Zahlungsmethoden – E-Scooter Verleih{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>&#128179; Zahlungsmethoden</h1>
+</div>
+
+{% if methods %}
+<div class="list-group mb-4" style="max-width:640px;">
+    {% for pm in methods %}
+    <div class="list-group-item d-flex justify-content-between align-items-center">
+        <div>
+            <strong>{{ pm.kartenidentifier_maskiert }}</strong>
+            {% if pm.is_active %}
+                <span class="badge bg-success ms-2">Aktiv</span>
+            {% else %}
+                <span class="badge bg-secondary ms-2">Inaktiv</span>
+            {% endif %}
+        </div>
+        <div class="d-flex gap-2">
+            {% if not pm.is_active %}
+            <form method="POST" action="/payment-methods/{{ pm.uid }}/set-active">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button type="submit" class="btn btn-sm btn-outline-success">Als aktiv setzen</button>
+            </form>
+            {% endif %}
+            <form method="POST" action="/payment-methods/{{ pm.uid }}/delete"
+                  onsubmit="return confirm('Zahlungsmethode wirklich löschen?')">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button type="submit" class="btn btn-sm btn-outline-danger">Löschen</button>
+            </form>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+{% else %}
+<div class="alert alert-info mt-2 mb-4" style="max-width:640px;">Noch keine Zahlungsmethoden hinterlegt.</div>
+{% endif %}
+
+<div class="card" style="max-width:540px;">
+    <div class="card-header">Neue Zahlungsmethode hinzufügen</div>
+    <div class="card-body">
+        <p class="text-muted small mb-3">Die Kartennummer wird nur maskiert gespeichert. Keine echte Zahlungsverarbeitung.</p>
+        <form method="POST">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <div class="mb-3">
+                <label for="kartenidentifier_maskiert" class="form-label">
+                    {{ form.kartenidentifier_maskiert.label }}
+                </label>
+                {{ form.kartenidentifier_maskiert(
+                    class="form-control",
+                    id="kartenidentifier_maskiert",
+                    placeholder="**** **** **** 1234"
+                ) }}
+                {% for error in form.kartenidentifier_maskiert.errors %}
+                    <div class="text-danger small mt-1">{{ error }}</div>
+                {% endfor %}
+            </div>
+            {{ form.submit(class="btn btn-primary") }}
+        </form>
+    </div>
+</div>
+{% endblock %}

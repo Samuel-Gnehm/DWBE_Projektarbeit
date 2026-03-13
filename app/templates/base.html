@@ -4,8 +4,79 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{% block title %}E-Scooter Verleih{% endblock %}</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link href="{{ url_for('static', filename='css/theme.css') }}" rel="stylesheet">
+    {% block head %}{% endblock %}
 </head>
 <body>
-    {% block content %}{% endblock %}
+    <nav class="navbar navbar-expand-lg">
+        <div class="container">
+            <a class="navbar-brand" href="/">
+                <span class="brand-icon">&#9889;</span>
+                E-Scooter Verleih
+            </a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarMain">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="navbarMain">
+                <div class="navbar-nav ms-auto align-items-lg-center">
+                    {% if current_user.is_authenticated %}
+                        {% if current_user.user_rolle == 'admin' %}
+                            <a class="nav-link" href="{{ url_for('admin.dashboard') }}">Dashboard</a>
+                            <a class="nav-link" href="{{ url_for('admin.users') }}">User</a>
+                            <a class="nav-link" href="{{ url_for('admin.scooters') }}">Scooter</a>
+                            <a class="nav-link" href="{{ url_for('admin.rides') }}">Fahrten</a>
+                            <a class="nav-link" href="{{ url_for('admin.transactions') }}">Transaktionen</a>
+                            <a class="nav-link" href="{{ url_for('admin.tariffs') }}">Tarife</a>
+                        {% endif %}
+                        {% if current_user.user_rolle == 'provider' %}
+                            <a class="nav-link" href="{{ url_for('provider.dashboard') }}">Dashboard</a>
+                            <a class="nav-link" href="{{ url_for('provider.scooters') }}">Meine Scooter</a>
+                            <a class="nav-link" href="{{ url_for('provider.tariffs') }}">Tarife</a>
+                        {% endif %}
+                        {% if current_user.user_rolle == 'user' %}
+                            <a class="nav-link" href="/scooters">Scooter</a>
+                            <a class="nav-link" href="/rides/history">Meine Fahrten</a>
+                            <a class="nav-link" href="/payment-methods">Zahlung</a>
+                            {% if active_ride %}
+                                <a class="nav-link text-warning" href="/rides/active">&#9889; Aktive Fahrt</a>
+                            {% endif %}
+                        {% endif %}
+                        <span class="navbar-text">{{ current_user.username }}</span>
+                        <a class="nav-link" href="{{ url_for('auth.logout') }}">Logout</a>
+                    {% else %}
+                        <a class="nav-link" href="{{ url_for('auth.login') }}">Login</a>
+                        <a class="nav-link" href="{{ url_for('auth.register') }}">Registrieren</a>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container main-container">
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                {% for category, message in messages %}
+                    <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
+                        {{ message }}
+                        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                    </div>
+                {% endfor %}
+            {% endif %}
+        {% endwith %}
+
+        {% block content %}{% endblock %}
+    </div>
+
+    <footer>
+        <div class="container d-flex justify-content-between align-items-center flex-wrap gap-2">
+            <span>&#9889; E-Scooter Verleih</span>
+            <span>Praxisarbeit &ndash; DBWE</span>
+        </div>
+    </footer>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    {% block scripts %}{% endblock %}
 </body>
 </html>

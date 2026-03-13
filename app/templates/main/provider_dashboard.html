@@ -1,0 +1,17 @@
+{% extends 'base.html' %}
+
+{% block title %}Anbieter-Dashboard – E-Scooter Verleih{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>Willkommen, {{ current_user.username }}! &#128075;</h1>
+    <p class="text-muted mb-0">Anbieter-Dashboard</p>
+</div>
+<div class="card" style="max-width:480px;">
+    <div class="card-body">
+        <h5 class="card-title">Dein Anbieter-Bereich</h5>
+        <p class="card-text text-muted">Hier kannst du deine E-Scooter verwalten und Statistiken einsehen.</p>
+        <span class="badge bg-primary">Rolle: Anbieter</span>
+    </div>
+</div>
+{% endblock %}

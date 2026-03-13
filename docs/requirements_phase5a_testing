@@ -1,0 +1,461 @@
+# Phase 5a – Testing
+
+## Ziel
+12 dokumentierte Testfälle mit pytest und Flask Testclient implementieren und ausführen. Das Testprotokoll (erwartetes vs. tatsächliches Ergebnis) wird als Grundlage für die Abgabe-Dokumentation verwendet.
+
+---
+
+## Kontext
+- Phase 1–4 sind abgeschlossen.
+- Die App läuft lokal gegen MSSQL – Tests laufen gegen **SQLite In-Memory** (unabhängig von der lokalen DB).
+- `pytest` ist noch nicht in `requirements.txt` – muss ergänzt werden.
+- Bestehende Dateien nicht überschreiben, sondern ergänzen.
+
+---
+
+## Aufgaben
+
+### 1. Abhängigkeiten ergänzen (`requirements.txt`)
+
+```
+pytest
+```
+
+---
+
+### 2. Ordnerstruktur anlegen
+
+```
+tests/
+├── __init__.py          # leer
+├── conftest.py          # Fixtures (App, Client, DB)
+├── test_auth.py         # T01, T02, T03
+├── test_access.py       # T04, T05
+├── test_provider.py     # T06, T07
+├── test_rider.py        # T08, T09, T10
+└── test_api.py          # T11, T12
+```
+
+---
+
+### 3. `tests/conftest.py`
+
+```python
+import pytest
+from app import create_app
+from app.extensions import db as _db
+from app.models import User, Scooter, Tariff, PaymentMethod
+
+@pytest.fixture(scope='session')
+def app():
+    app = create_app('testing')
+    app.config.update({
+        'TESTING': True,
+        'SQLALCHEMY_DATABASE_URI': 'sqlite:///:memory:',
+        'WTF_CSRF_ENABLED': False,
+        'JWT_SECRET_KEY': 'test-secret'
+    })
+    with app.app_context():
+        _db.create_all()
+        yield app
+        _db.drop_all()
+
+@pytest.fixture(scope='function')
+def db(app):
+    with app.app_context():
+        yield _db
+        _db.session.rollback()
+
+@pytest.fixture(scope='function')
+def client(app):
+    return app.test_client()
+
+@pytest.fixture(scope='function')
+def rider(db):
+    """Erstellt einen Rider-User für Tests."""
+    u = User(
+        vorname='Test', nachname='Rider',
+        username='testrider', email='rider@test.ch',
+        user_rolle='user', status='active'
+    )
+    u.set_password('Test1234!')
+    db.session.add(u)
+    db.session.commit()
+    return u
+
+@pytest.fixture(scope='function')
+def provider(db):
+    """Erstellt einen Provider-User für Tests."""
+    u = User(
+        vorname='Test', nachname='Provider',
+        username='testprovider', email='provider@test.ch',
+        user_rolle='provider', status='active'
+    )
+    u.set_password('Test1234!')
+    db.session.add(u)
+    db.session.commit()
+    return u
+
+@pytest.fixture(scope='function')
+def provider_b(db):
+    """Zweiter Provider für Zugriffsschutz-Tests."""
+    u = User(
+        vorname='Other', nachname='Provider',
+        username='otherprovider', email='other@test.ch',
+        user_rolle='provider', status='active'
+    )
+    u.set_password('Test1234!')
+    db.session.add(u)
+    db.session.commit()
+    return u
+
+@pytest.fixture(scope='function')
+def scooter(db, provider):
+    """Erstellt einen Scooter für Provider."""
+    import uuid
+    s = Scooter(
+        uid_provider=provider.uid,
+        model='TestScooter X1',
+        qr_code=str(uuid.uuid4()),
+        status='available',
+        battery_level=80,
+        latitude=47.3769,
+        longitude=8.5417,
+        gefahrene_km_gesamt=0.0
+    )
+    db.session.add(s)
+    db.session.commit()
+    return s
+
+@pytest.fixture(scope='function')
+def active_tariff(db):
+    """Erstellt einen aktiven Tarif."""
+    from datetime import date
+    t = Tariff(
+        base_price=2.00,
+        minute_price=0.25,
+        valid_from=date.today(),
+        valid_to=None,
+        is_active=True
+    )
+    db.session.add(t)
+    db.session.commit()
+    return t
+
+@pytest.fixture(scope='function')
+def payment_method(db, rider):
+    """Erstellt eine aktive Zahlungsmethode für den Rider."""
+    pm = PaymentMethod(
+        rider_uid=rider.uid,
+        kartenidentifier_maskiert='**** **** **** 1234',
+        is_active=True
+    )
+    db.session.add(pm)
+    db.session.commit()
+    return pm
+
+def login(client, username, password):
+    """Hilfsfunktion: User per Session einloggen."""
+    return client.post('/auth/login', data={
+        'username': username,
+        'password': password
+    }, follow_redirects=True)
+```
+
+---
+
+### 4. Testdatei: `tests/test_auth.py`
+
+**T01 – Registrierung mit gültigen Daten**
+```python
+def test_T01_registrierung_gueltig(client, db):
+    """T01: Registrierung mit gültigen Daten legt User in DB an."""
+    response = client.post('/auth/register', data={
+        'vorname': 'Hans',
+        'nachname': 'Muster',
+        'username': 'hansmuster',
+        'email': 'hans@test.ch',
+        'password': 'Sicher123!',
+        'password_confirm': 'Sicher123!',
+        'user_rolle': 'user'
+    }, follow_redirects=True)
+    assert response.status_code == 200
+    from app.models import User
+    user = User.query.filter_by(username='hansmuster').first()
+    assert user is not None
+    assert user.passwort_hash != 'Sicher123!'  # Passwort ist gehasht
+```
+
+**T02 – Login mit korrekten Daten**
+```python
+def test_T02_login_korrekt(client, db, rider):
+    """T02: Login mit korrekten Daten startet Session, Redirect zu /dashboard."""
+    response = client.post('/auth/login', data={
+        'username': 'testrider',
+        'password': 'Test1234!'
+    })
+    assert response.status_code == 302
+    assert '/dashboard' in response.headers['Location']
+```
+
+**T03 – Login mit falschem Passwort**
+```python
+def test_T03_login_falsches_passwort(client, db, rider):
+    """T03: Login mit falschem Passwort zeigt Fehlermeldung, kein Login."""
+    response = client.post('/auth/login', data={
+        'username': 'testrider',
+        'password': 'FalschesPasswort!'
+    }, follow_redirects=True)
+    assert response.status_code == 200
+    assert 'login' in response.request.path.lower()
+```
+
+---
+
+### 5. Testdatei: `tests/test_access.py`
+
+**T04 – Rider auf Provider-Route**
+```python
+from tests.conftest import login
+
+def test_T04_rider_auf_provider_route(client, db, rider):
+    """T04: Rider ruft /provider/scooters auf – erwartet 403."""
+    login(client, 'testrider', 'Test1234!')
+    response = client.get('/provider/scooters')
+    assert response.status_code == 403
+```
+
+**T05 – Nicht eingeloggter Zugriff**
+```python
+def test_T05_nicht_eingeloggt_dashboard(client):
+    """T05: Nicht eingeloggter User ruft /dashboard auf – Redirect zu /auth/login."""
+    response = client.get('/dashboard')
+    assert response.status_code == 302
+    assert '/auth/login' in response.headers['Location']
+```
+
+---
+
+### 6. Testdatei: `tests/test_provider.py`
+
+**T06 – Scooter anlegen**
+```python
+from tests.conftest import login
+
+def test_T06_scooter_anlegen(client, db, provider):
+    """T06: Provider legt neuen Scooter an – erscheint in DB mit Status available."""
+    login(client, 'testprovider', 'Test1234!')
+    response = client.post('/provider/scooters/add', data={
+        'model': 'Xiaomi Pro 2',
+        'battery_level': 85,
+        'latitude': '47.376900',
+        'longitude': '8.541700',
+        'status': 'available'
+    }, follow_redirects=True)
+    assert response.status_code == 200
+    from app.models import Scooter
+    s = Scooter.query.filter_by(model='Xiaomi Pro 2').first()
+    assert s is not None
+    assert s.status == 'available'
+    assert s.qr_code is not None
+```
+
+**T07 – Fremden Scooter bearbeiten**
+```python
+def test_T07_fremden_scooter_bearbeiten(client, db, provider, provider_b, scooter):
+    """T07: Provider B versucht Scooter von Provider A zu bearbeiten – erwartet 403."""
+    login(client, 'otherprovider', 'Test1234!')
+    response = client.post(f'/provider/scooters/{scooter.uid}/edit', data={
+        'model': 'Gehackter Scooter',
+        'battery_level': 50,
+        'latitude': '47.0',
+        'longitude': '8.0',
+        'status': 'available'
+    })
+    assert response.status_code == 403
+```
+
+---
+
+### 7. Testdatei: `tests/test_rider.py`
+
+**T08 – Fahrt starten ohne Zahlungsmethode**
+```python
+from tests.conftest import login
+
+def test_T08_fahrt_start_ohne_zahlung(client, db, rider, scooter, active_tariff):
+    """T08: Rider startet Fahrt ohne Zahlungsmethode – Flash-Fehler, kein Ride in DB."""
+    login(client, 'testrider', 'Test1234!')
+    response = client.post(f'/rides/start/{scooter.uid}', follow_redirects=True)
+    assert response.status_code == 200
+    from app.models import Ride
+    ride = Ride.query.filter_by(rider_uid=rider.uid).first()
+    assert ride is None
+```
+
+**T09 – Fahrt starten und beenden, Preisberechnung**
+```python
+from datetime import datetime, timedelta
+from decimal import Decimal
+
+def test_T09_fahrt_start_ende_preis(client, db, rider, scooter, active_tariff, payment_method):
+    """T09: Fahrt starten und beenden – Preis korrekt, Scooter wieder available."""
+    login(client, 'testrider', 'Test1234!')
+
+    # Fahrt starten
+    client.post(f'/rides/start/{scooter.uid}', follow_redirects=True)
+
+    from app.models import Ride, Scooter as ScooterModel
+    ride = Ride.query.filter_by(rider_uid=rider.uid, endzeit=None).first()
+    assert ride is not None
+
+    # Scooter ist jetzt rented
+    db.session.refresh(scooter)
+    assert scooter.status == 'rented'
+
+    # Fahrt beenden mit 10 km
+    client.post(f'/rides/end/{ride.uid}', data={
+        'gefahrene_km': '10.00'
+    }, follow_redirects=True)
+
+    db.session.refresh(ride)
+    assert ride.endzeit is not None
+    assert ride.gesamtpreis is not None
+    # Preis: 2.00 Basispreis + Minuten * 0.25
+    assert ride.gesamtpreis >= Decimal('2.00')
+
+    # Scooter ist wieder available
+    db.session.refresh(scooter)
+    assert scooter.status == 'available'
+```
+
+**T10 – `calculate_price()` Unit Test**
+```python
+def test_T10_calculate_price(db, active_tariff):
+    """T10: Ride.calculate_price() berechnet Preis korrekt für bekannte Eingabe."""
+    from app.models import Ride
+    from datetime import datetime
+    from decimal import Decimal
+    import uuid
+
+    start = datetime(2025, 1, 1, 10, 0, 0)
+    end   = datetime(2025, 1, 1, 10, 20, 0)  # exakt 20 Minuten
+
+    ride = Ride(
+        rider_uid=str(uuid.uuid4()),
+        scooter_uid=str(uuid.uuid4()),
+        tarif_uid=active_tariff.uid,
+        startzeit=start,
+        endzeit=end,
+        gefahrene_km=Decimal('5.0')
+    )
+    ride.tariff = active_tariff  # Relationship manuell setzen für Unit Test
+    db.session.add(ride)
+    db.session.commit()
+
+    preis = ride.calculate_price()
+    # Erwartung: 2.00 + (20 * 0.25) = 7.00
+    assert preis == Decimal('7.00')
+```
+
+---
+
+### 8. Testdatei: `tests/test_api.py`
+
+**T11 – API Login gibt JWT zurück**
+```python
+def test_T11_api_login_gibt_token(client, db, rider):
+    """T11: POST /api/auth/login mit gültigen Daten gibt JWT-Token zurück."""
+    response = client.post('/api/auth/login',
+        json={'username': 'testrider', 'password': 'Test1234!'})
+    assert response.status_code == 200
+    data = response.get_json()
+    assert 'access_token' in data
+    assert data['token_type'] == 'Bearer'
+```
+
+**T12 – API Rides ohne Token gibt 401**
+```python
+def test_T12_api_rides_ohne_token(client):
+    """T12: GET /api/rides ohne Token gibt 401 mit JSON-Fehlermeldung zurück."""
+    response = client.get('/api/rides')
+    assert response.status_code == 401
+    data = response.get_json()
+    assert data is not None  # JSON, nicht HTML
+    assert 'error' in data
+```
+
+---
+
+### 9. `TestingConfig` ergänzen (`app/config.py`)
+
+```python
+class TestingConfig(Config):
+    TESTING = True
+    SQLALCHEMY_DATABASE_URI = 'sqlite:///:memory:'
+    WTF_CSRF_ENABLED = False
+    JWT_SECRET_KEY = 'test-secret'
+```
+
+In `create_app()` die Config-Map ergänzen:
+
+```python
+config_map = {
+    'development': DevelopmentConfig,
+    'production': ProductionConfig,
+    'testing': TestingConfig
+}
+```
+
+---
+
+### 10. Tests ausführen
+
+```bash
+# Alle Tests
+pytest -v
+
+# Einzelne Datei
+pytest tests/test_auth.py -v
+
+# Einzelner Test
+pytest tests/test_auth.py::test_T01_registrierung_gueltig -v
+```
+
+Erwartete Ausgabe (Beispiel):
+```
+tests/test_auth.py::test_T01_registrierung_gueltig PASSED
+tests/test_auth.py::test_T02_login_korrekt PASSED
+tests/test_auth.py::test_T03_login_falsches_passwort PASSED
+tests/test_access.py::test_T04_rider_auf_provider_route PASSED
+tests/test_access.py::test_T05_nicht_eingeloggt_dashboard PASSED
+tests/test_provider.py::test_T06_scooter_anlegen PASSED
+tests/test_provider.py::test_T07_fremden_scooter_bearbeiten PASSED
+tests/test_rider.py::test_T08_fahrt_start_ohne_zahlung PASSED
+tests/test_rider.py::test_T09_fahrt_start_ende_preis PASSED
+tests/test_rider.py::test_T10_calculate_price PASSED
+tests/test_api.py::test_T11_api_login_gibt_token PASSED
+tests/test_api.py::test_T12_api_rides_ohne_token PASSED
+```
+
+---
+
+## Acceptance Criteria
+
+Phase 5a gilt als abgeschlossen wenn:
+
+- [ ] `pytest -v` läuft ohne Import-Fehler durch
+- [ ] Alle 12 Tests sind implementiert und benannt (T01–T12)
+- [ ] `pytest -v` Ausgabe kann als Testprotokoll-Grundlage verwendet werden
+- [ ] Tests sind unabhängig von der lokalen MSSQL-Datenbank (SQLite In-Memory)
+
+---
+
+## Hinweise für Claude Code
+
+- `WTF_CSRF_ENABLED = False` in der TestingConfig ist zwingend – sonst schlagen alle POST-Tests fehl.
+- `scope='function'` bei DB-Fixtures stellt sicher dass jeder Test eine saubere DB-Session bekommt.
+- `db.session.refresh(obj)` nach Commits verwenden um den aktuellen DB-Zustand zu laden.
+- Bei T10 wird `ride.tariff` manuell gesetzt – das ist ein Unit Test für die Methode, kein Integrationstest.
+- SQLite unterstützt keine `UNIQUEIDENTIFIER`-Spalten – die Modelle müssen `db.String(36)` als Typ verwenden (sollte aus Phase 1 bereits korrekt sein).
+- Falls ein Test fehlschlägt: in der Abgabe-Dokumentation trotzdem dokumentieren mit dem tatsächlichen Ergebnis – das ist ausdrücklich erlaubt laut Aufgabenstellung.

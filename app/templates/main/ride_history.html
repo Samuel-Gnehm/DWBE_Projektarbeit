@@ -1,0 +1,46 @@
+{% extends 'base.html' %}
+
+{% block title %}Meine Fahrten – E-Scooter Verleih{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>&#128203; Meine Fahrten</h1>
+</div>
+
+{% if rides %}
+<div class="table-responsive mt-1">
+    <table class="table table-striped table-hover align-middle">
+        <thead>
+            <tr>
+                <th>Datum</th>
+                <th>Scooter</th>
+                <th>Dauer</th>
+                <th>KM</th>
+                <th>Gesamtpreis</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for ride in rides %}
+            {% set duration_sec = (ride.endzeit - ride.startzeit).total_seconds()|int %}
+            {% set duration_h = duration_sec // 3600 %}
+            {% set duration_m = (duration_sec % 3600) // 60 %}
+            {% set duration_s = duration_sec % 60 %}
+            <tr>
+                <td>{{ ride.startzeit.strftime('%d.%m.%Y %H:%M') }}</td>
+                <td>{{ ride.scooter.model }}</td>
+                <td>{{ '%02d'|format(duration_h) }}:{{ '%02d'|format(duration_m) }}:{{ '%02d'|format(duration_s) }}</td>
+                <td>{{ '%.2f'|format(ride.gefahrene_km|float) }} km</td>
+                <td><strong>CHF {{ '%.2f'|format(ride.gesamtpreis|float) }}</strong></td>
+                <td>
+                    <a href="/rides/{{ ride.uid }}" class="btn btn-sm btn-outline-primary">Details</a>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% else %}
+<div class="alert alert-info mt-2">Noch keine abgeschlossenen Fahrten.</div>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,313 @@
+# Phase 3b – Rider-Bereich (Fahrt starten, beenden, Abrechnung)
+
+## Ziel
+Vollständiger Rider-Bereich: Ein eingeloggter User (Rolle `user`) kann verfügbare Scooter einsehen, eine Fahrt starten, die aktive Fahrt verfolgen, sie beenden und erhält danach eine Abrechnung. Zahlungsmethoden können hinterlegt und verwaltet werden. Nach Abschluss dieser Phase ist der gesamte Fahrt-Lifecycle implementiert.
+
+---
+
+## Kontext
+- Phase 1 (Projektstruktur, Modelle, DB-Migration) ist abgeschlossen.
+- Phase 2 (Auth, Login, Registrierung, Rollenkonzept) ist abgeschlossen.
+- Phase 3a (Provider-Bereich) ist abgeschlossen – Scooter und Tarife existieren in der DB.
+- Blueprint `main` existiert bereits – er wird in dieser Phase ausgebaut.
+- Bestehende Dateien **nicht überschreiben**, sondern ergänzen.
+- `@rider_required` Decorator ist in `app/utils.py` bereits vorhanden.
+- Alle Modelle sind in `app/models/` verfügbar: `User`, `Scooter`, `Tariff`, `Ride`, `PaymentMethod`, `Transaction`.
+
+---
+
+## Aufgaben
+
+### 1. Routen im `main` Blueprint ausbauen (`app/blueprints/main/routes.py`)
+
+Alle Routen sind mit `@login_required` und `@rider_required` geschützt, ausser wo anders angegeben.
+
+| Methode    | Route                          | Beschreibung                                         |
+|------------|--------------------------------|------------------------------------------------------|
+| GET        | `/dashboard`                   | Rider-Dashboard – Übersicht, aktive Fahrt, Schnelllinks |
+| GET        | `/scooters`                    | Liste aller verfügbaren Scooter                      |
+| POST       | `/rides/start/<scooter_uid>`   | Fahrt starten                                        |
+| GET        | `/rides/active`                | Aktive Fahrt anzeigen                                |
+| GET / POST | `/rides/end/<ride_uid>`        | Fahrt beenden (KM eingeben, Preis berechnen)         |
+| GET        | `/rides/history`               | Eigene abgeschlossene Fahrten                        |
+| GET        | `/rides/<ride_uid>`            | Einzelne Fahrt-Details / Quittung                    |
+| GET / POST | `/payment-methods`             | Zahlungsmethoden verwalten                           |
+| POST       | `/payment-methods/<uid>/set-active` | Zahlungsmethode als aktiv setzen               |
+| POST       | `/payment-methods/<uid>/delete`| Zahlungsmethode löschen                              |
+
+---
+
+### 2. Formulare (`app/blueprints/main/forms.py`)
+
+Mit Flask-WTF:
+
+**`EndRideForm`:**
+- `gefahrene_km` – DecimalField, Required, places=2, NumberRange(min=0.01, max=999.99), Label: „Gefahrene Kilometer"
+  > KM werden simuliert – der Rider gibt sie manuell ein beim Beenden der Fahrt.
+
+**`PaymentMethodForm`:**
+- `kartenidentifier_maskiert` – StringField, Required, Length(min=4, max=25), Label: „Kartennummer (letzte 4 Stellen oder maskiert, z.B. **** **** **** 1234)"
+  > Es wird keine echte Zahlungsverarbeitung implementiert – nur der maskierte Identifier wird gespeichert.
+
+---
+
+### 3. Routen-Logik
+
+#### GET `/dashboard`
+1. Aktive Fahrt prüfen: `Ride.query.filter_by(rider_uid=current_user.uid, endzeit=None).first()`
+2. Anzahl abgeschlossene Fahrten laden
+3. Aktive Zahlungsmethode laden: `PaymentMethod.query.filter_by(rider_uid=current_user.uid, is_active=True).first()`
+4. Template mit diesen Werten rendern
+
+#### GET `/scooters`
+1. Alle Scooter mit Status `'available'` laden:
+   ```python
+   scooters = Scooter.query.filter_by(status='available').all()
+   ```
+2. Aktive Fahrt des Users prüfen – wenn bereits eine aktive Fahrt läuft, Hinweis im Template anzeigen (kein Start möglich)
+3. Liste an Template übergeben
+
+#### POST `/rides/start/<scooter_uid>`
+1. Scooter per UID laden, 404 wenn nicht gefunden
+2. **Geschäftsregeln prüfen:**
+   - Scooter muss Status `'available'` haben → sonst Flash „Dieser Scooter ist nicht verfügbar.", Redirect zu `/scooters`
+   - User darf keine aktive Fahrt haben (nur eine gleichzeitig) → sonst Flash „Du hast bereits eine aktive Fahrt.", Redirect zu `/rides/active`
+   - User muss eine aktive Zahlungsmethode haben → sonst Flash „Bitte hinterlege zuerst eine Zahlungsmethode.", Redirect zu `/payment-methods`
+3. Aktiven Tarif laden: `Tariff.get_active()` → wenn kein Tarif aktiv: Flash „Kein aktiver Tarif vorhanden. Bitte Administrator kontaktieren.", Redirect zu `/scooters`
+4. Neues `Ride`-Objekt erstellen:
+   ```python
+   ride = Ride(
+       rider_uid=current_user.uid,
+       scooter_uid=scooter.uid,
+       tarif_uid=tariff.uid,
+       startzeit=datetime.utcnow(),
+       endzeit=None,
+       gesamtpreis=None,
+       gefahrene_km=0.0
+   )
+   ```
+5. Scooter-Status auf `'rented'` setzen
+6. DB speichern (beide Änderungen in einem Commit)
+7. Flash-Message „Fahrt gestartet! Gute Fahrt 🛴", Redirect zu `/rides/active`
+
+#### GET `/rides/active`
+1. Aktive Fahrt laden: `Ride.query.filter_by(rider_uid=current_user.uid, endzeit=None).first()`
+2. Wenn keine aktive Fahrt → Redirect zu `/scooters` mit Flash „Keine aktive Fahrt."
+3. Laufende Dauer berechnen: `datetime.utcnow() - ride.startzeit` (nur zur Anzeige, nicht speichern)
+4. Voraussichtliche Kosten berechnen (zur Anzeige):
+   ```python
+   minuten = (datetime.utcnow() - ride.startzeit).total_seconds() / 60
+   vorschau = tariff.base_price + (tariff.minute_price * Decimal(str(round(minuten, 2))))
+   ```
+5. Template mit Fahrt, Scooter, Tarif, Dauer und Kostenvorschau rendern
+
+#### GET + POST `/rides/end/<ride_uid>`
+1. Fahrt per UID laden, 404 wenn nicht gefunden
+2. Sicherheitsprüfung: `ride.rider_uid != current_user.uid` → 403
+3. Prüfen ob Fahrt bereits beendet: `ride.endzeit is not None` → Flash „Diese Fahrt ist bereits beendet.", Redirect zu `/rides/history`
+4. `EndRideForm` instanziieren
+5. Bei POST und gültigem Formular:
+   - `endzeit = datetime.utcnow()` setzen
+   - `gefahrene_km = form.gefahrene_km.data` setzen
+   - Preis berechnen via `ride.calculate_price()` (Methode im Modell)
+   - `gesamtpreis` speichern
+   - Scooter-Status zurück auf `'available'` setzen
+   - `gefahrene_km_gesamt` auf dem Scooter aktualisieren: `scooter.gefahrene_km_gesamt += ride.gefahrene_km`
+   - Transaktion erstellen:
+     ```python
+     payment = PaymentMethod.query.filter_by(rider_uid=current_user.uid, is_active=True).first()
+     transaction = Transaction(
+         ride_uid=ride.uid,
+         payment_method_uid=payment.uid,
+         betrag=ride.gesamtpreis,
+         status='completed'
+     )
+     ```
+   - Alles in einem Commit speichern
+   - Flash „Fahrt beendet. Kosten: CHF {ride.gesamtpreis:.2f}", Redirect zu `/rides/<ride_uid>` (Quittung)
+6. Bei GET: Formular anzeigen mit aktuellen Fahrtdaten
+
+#### GET `/rides/history`
+1. Alle abgeschlossenen Fahrten laden (endzeit is not None):
+   ```python
+   rides = Ride.query.filter(
+       Ride.rider_uid == current_user.uid,
+       Ride.endzeit != None
+   ).order_by(Ride.startzeit.desc()).all()
+   ```
+2. An Template übergeben
+
+#### GET `/rides/<ride_uid>`
+1. Fahrt per UID laden, 404 wenn nicht gefunden
+2. Sicherheitsprüfung: `ride.rider_uid != current_user.uid` → 403
+3. Transaktion laden: `Transaction.query.filter_by(ride_uid=ride.uid).first()`
+4. Template mit Fahrt, Scooter, Tarif und Transaktion rendern (Quittungs-Ansicht)
+
+#### GET + POST `/payment-methods`
+1. Alle Zahlungsmethoden des Users laden: `PaymentMethod.query.filter_by(rider_uid=current_user.uid).all()`
+2. `PaymentMethodForm` instanziieren
+3. Bei POST und gültigem Formular:
+   - Neue `PaymentMethod` erstellen
+   - `is_active = True` wenn es die erste Methode ist, sonst `False`
+   - In DB speichern, Flash „Zahlungsmethode hinzugefügt.", Redirect zu `/payment-methods`
+4. Bei GET: Liste und Formular anzeigen
+
+#### POST `/payment-methods/<uid>/set-active`
+1. Zahlungsmethode laden, 404 wenn nicht gefunden
+2. Sicherheitsprüfung: `pm.rider_uid != current_user.uid` → 403
+3. Alle anderen Methoden des Users auf `is_active=False` setzen
+4. Diese Methode auf `is_active=True` setzen
+5. Commit, Flash „Zahlungsmethode aktiviert.", Redirect zu `/payment-methods`
+
+#### POST `/payment-methods/<uid>/delete`
+1. Zahlungsmethode laden, 404 wenn nicht gefunden
+2. Sicherheitsprüfung: `pm.rider_uid != current_user.uid` → 403
+3. Geschäftsregel: Wenn `is_active=True` und es die einzige Methode ist → Flash „Letzte aktive Zahlungsmethode kann nicht gelöscht werden.", Redirect
+4. Aus DB löschen (`db.session.delete`), Commit
+5. Falls gelöschte Methode `is_active` war: nächste verfügbare Methode aktivieren
+6. Flash „Zahlungsmethode entfernt.", Redirect zu `/payment-methods`
+
+---
+
+### 4. Preisberechnung im Modell (`app/models/ride.py`)
+
+Die Methode `calculate_price()` muss korrekt implementiert sein:
+
+```python
+from decimal import Decimal
+
+def calculate_price(self):
+    """Berechnet den Gesamtpreis der Fahrt: Basispreis + (Minutenpreis × Minuten)"""
+    if self.endzeit is None or self.startzeit is None:
+        return None
+    dauer_sekunden = (self.endzeit - self.startzeit).total_seconds()
+    minuten = Decimal(str(round(dauer_sekunden / 60, 2)))
+    preis = self.tariff.base_price + (self.tariff.minute_price * minuten)
+    return round(preis, 2)
+```
+
+> Die Methode greift via Relationship auf `self.tariff` zu – sicherstellen dass die Relationship im Modell korrekt definiert ist (`tariff = db.relationship('Tariff', backref='rides')`).
+
+---
+
+### 5. Templates
+
+Alle Templates erben von `templates/base.html`.
+
+**Ordner:** `templates/main/` (bereits vorhanden, Dateien ergänzen)
+
+#### `main/dashboard.html`
+- Begrüssung mit `current_user.vorname`
+- **Wenn aktive Fahrt läuft:** Auffälliges Banner (Bootstrap Alert `alert-warning`) mit Link zu `/rides/active`
+- Drei Karten:
+  - „Verfügbare Scooter" → Link zu `/scooters`
+  - „Meine Fahrten" (Anzahl abgeschlossen) → Link zu `/rides/history`
+  - „Zahlungsmethode" (maskierte Nummer der aktiven Methode oder „Keine hinterlegt") → Link zu `/payment-methods`
+
+#### `main/scooters.html`
+- Überschrift „Verfügbare Scooter"
+- Wenn aktive Fahrt läuft: Alert „Du hast bereits eine aktive Fahrt." mit Link zu `/rides/active`, keine Start-Buttons anzeigen
+- Tabelle oder Karten-Grid mit: Modell, Akku (%), Position (Lat/Lon), QR-Code
+- Pro Scooter: Button „Scooter entsperren & Fahrt starten" → POST zu `/rides/start/<uid>` (mit CSRF-Token als verstecktes Formular)
+- Leerzustand: „Aktuell keine Scooter verfügbar."
+
+#### `main/active_ride.html`
+- Überschrift „Aktive Fahrt"
+- Scooter-Infos: Modell, QR-Code
+- Startzeit anzeigen (formatiert)
+- Laufende Dauer (wird beim Laden der Seite berechnet, statisch angezeigt – kein Live-Timer nötig)
+- Aktuelle Kostenvorschau anzeigen
+- Tarif-Info: Basispreis + Minutenpreis
+- Button „Fahrt beenden" → Link zu `/rides/end/<ride_uid>`
+
+#### `main/end_ride.html`
+- Überschrift „Fahrt beenden"
+- Fahrt-Infos: Scooter, Startzeit, bisherige Dauer
+- Formular mit `EndRideForm` (KM-Eingabe)
+- CSRF-Token, Fehleranzeige
+- Abbrechen-Link zu `/rides/active`
+
+#### `main/ride_detail.html`
+- Überschrift „Fahrt-Quittung"
+- Alle Fahrtdaten: Scooter, Start- und Endzeit, Dauer, gefahrene KM
+- Abrechnung: Basispreis, Minutenpreis × Minuten, **Gesamtpreis** (hervorgehoben)
+- Transaktions-Status (Badge: `completed` → grün, `failed` → rot, `pending` → gelb)
+- Verwendete Zahlungsmethode (maskiert)
+- Link zurück zu „Meine Fahrten"
+
+#### `main/ride_history.html`
+- Überschrift „Meine Fahrten"
+- Tabelle mit: Datum, Scooter-Modell, Dauer, KM, Gesamtpreis, Link „Details"
+- Leerzustand: „Noch keine abgeschlossenen Fahrten."
+
+#### `main/payment_methods.html`
+- Überschrift „Zahlungsmethoden"
+- Liste bestehender Methoden:
+  - Kartenidentifier maskiert
+  - Status-Badge: „Aktiv" (grün) / „Inaktiv" (grau)
+  - Buttons: „Als aktiv setzen" (POST), „Löschen" (POST mit Bestätigung)
+- Formular für neue Zahlungsmethode (unter der Liste)
+- Hinweistext: „Die Kartennummer wird nur maskiert gespeichert. Keine echte Zahlungsverarbeitung."
+
+---
+
+### 6. Navbar aktualisieren (`templates/base.html`)
+
+Für eingeloggte Rider einen Navigationsbereich ergänzen:
+
+```html
+{% if current_user.is_authenticated and current_user.user_rolle == 'user' %}
+  <a class="nav-link" href="/scooters">Scooter</a>
+  <a class="nav-link" href="/rides/history">Meine Fahrten</a>
+  <a class="nav-link" href="/payment-methods">Zahlung</a>
+  {% if active_ride %}
+    <a class="nav-link text-warning" href="/rides/active">⚡ Aktive Fahrt</a>
+  {% endif %}
+{% endif %}
+```
+
+> `active_ride` muss als Template-Kontext-Variable in einem `@app.context_processor` oder direkt in den Routen verfügbar gemacht werden. Einfachste Lösung: in jeder Rider-Route explizit mitgeben.
+
+---
+
+## Acceptance Criteria
+
+Phase 3b gilt als abgeschlossen wenn:
+
+- [ ] `GET /dashboard` zeigt korrekte Übersicht (aktive Fahrt-Banner wenn Fahrt läuft)
+- [ ] `GET /scooters` listet nur Scooter mit Status `available`
+- [ ] Fahrt starten setzt Scooter-Status auf `rented`
+- [ ] Fahrt starten schlägt fehl ohne aktive Zahlungsmethode (Flash-Message)
+- [ ] Fahrt starten schlägt fehl wenn bereits eine aktive Fahrt läuft
+- [ ] `GET /rides/active` zeigt laufende Fahrt mit Dauer und Kostenvorschau
+- [ ] Fahrt beenden berechnet Preis korrekt (Basispreis + Minuten × Minutenpreis)
+- [ ] Fahrt beenden setzt Scooter-Status zurück auf `available`
+- [ ] `gefahrene_km_gesamt` auf dem Scooter wird nach Fahrtende aktualisiert
+- [ ] Eine `Transaction` wird nach Fahrtende erstellt (Status `completed`)
+- [ ] `GET /rides/<uid>` zeigt Quittung mit korrektem Gesamtpreis und Transaktions-Status
+- [ ] `GET /rides/history` zeigt alle abgeschlossenen Fahrten des eingeloggten Users
+- [ ] Zahlungsmethode hinzufügen speichert den maskierten Identifier in der DB
+- [ ] „Als aktiv setzen" setzt alle anderen Methoden auf inaktiv
+- [ ] Nicht eingeloggte User werden auf `/auth/login` weitergeleitet
+- [ ] Provider und Admin erhalten 403 auf allen Rider-Routen
+
+---
+
+## Hinweise für Claude Code
+
+- `datetime.utcnow()` für alle Zeitstempel verwenden – konsistent mit Phase 1/2.
+- `Decimal`-Typ für Preisberechnungen verwenden (nicht `float`) – MSSQL `DECIMAL(10,2)` ist exakt.
+- `ride.calculate_price()` setzt voraus dass `self.tariff` via Relationship geladen ist – keine separate Query nötig wenn Relationship korrekt definiert.
+- Der `active_ride`-Check im Dashboard und in `/scooters` kann mit derselben Query-Logik erfolgen: `Ride.query.filter_by(rider_uid=current_user.uid, endzeit=None).first()`.
+- POST-Formulare für „Fahrt starten" und „Zahlungsmethode aktivieren/löschen" brauchen ein verstecktes `{{ csrf_token() }}`-Feld:
+  ```html
+  <form method="POST" action="/rides/start/{{ scooter.uid }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <button type="submit" class="btn btn-success">Scooter entsperren</button>
+  </form>
+  ```
+- `gefahrene_km` im `Ride`-Modell ist beim Start `0.0` und wird erst beim Beenden gesetzt.
+- Alle DB-Änderungen in einem `db.session.commit()` pro Request zusammenfassen – kein Commit nach jeder einzelnen Änderung.
+- Keine Logik in Templates – Kostenvorschau in der Route berechnen und als Variable übergeben.
+- `rider_required` aus `app.utils` importieren, nicht neu definieren.
+- Sicherheitsprüfung bei `ride.rider_uid != current_user.uid` in jeder Fahrt-Route – kein User darf fremde Fahrten sehen oder beenden.

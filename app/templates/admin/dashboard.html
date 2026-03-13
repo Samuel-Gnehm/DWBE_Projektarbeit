@@ -1,0 +1,80 @@
+{% extends 'base.html' %}
+{% block title %}Admin-Dashboard{% endblock %}
+{% block content %}
+<div class="page-header">
+    <h1>Admin-Dashboard</h1>
+    <p class="text-muted mb-0">Systemübersicht und Schnellzugriff</p>
+</div>
+
+<div class="row g-3 mb-4">
+    <div class="col-md-3 col-6">
+        <div class="stat-card">
+            <div class="stat-icon">&#128100;</div>
+            <div class="stat-label">Fahrer</div>
+            <div class="stat-value">{{ total_users }}</div>
+        </div>
+    </div>
+    <div class="col-md-3 col-6">
+        <div class="stat-card">
+            <div class="stat-icon icon-info">&#127970;</div>
+            <div class="stat-label">Anbieter</div>
+            <div class="stat-value">{{ total_providers }}</div>
+        </div>
+    </div>
+    <div class="col-md-3 col-6">
+        <div class="stat-card">
+            <div class="stat-icon icon-success">&#128740;</div>
+            <div class="stat-label">Scooter gesamt</div>
+            <div class="stat-value">{{ total_scooters }}</div>
+            <div class="stat-sub">Verfügbar: {{ active_scooters }} &nbsp;&middot;&nbsp; Verliehen: {{ rented_scooters }}</div>
+        </div>
+    </div>
+    <div class="col-md-3 col-6">
+        <div class="stat-card">
+            <div class="stat-icon icon-warning">&#128176;</div>
+            <div class="stat-label">Umsatz gesamt</div>
+            <div class="stat-value" style="font-size:1.5rem;">CHF {{ '%.2f'|format(total_revenue) }}</div>
+        </div>
+    </div>
+    <div class="col-md-3 col-6">
+        <div class="stat-card">
+            <div class="stat-icon icon-success">&#9989;</div>
+            <div class="stat-label">Abgeschl. Fahrten</div>
+            <div class="stat-value">{{ total_rides }}</div>
+        </div>
+    </div>
+    <div class="col-md-3 col-6">
+        <div class="stat-card">
+            <div class="stat-icon icon-info">&#9889;</div>
+            <div class="stat-label">Aktive Fahrten</div>
+            <div class="stat-value">{{ active_rides }}</div>
+        </div>
+    </div>
+    <div class="col-md-6">
+        <div class="stat-card {% if not active_tariff %}border-danger{% endif %}" style="{% if not active_tariff %}border-color:rgba(239,68,68,0.4){% endif %}">
+            <div class="stat-icon {% if active_tariff %}icon-success{% else %}icon-danger{% endif %}">&#128178;</div>
+            <div class="stat-label">Aktiver Tarif</div>
+            {% if active_tariff %}
+                <div class="mt-1">
+                    <span class="text-muted">Basis:</span> <strong>CHF {{ '%.2f'|format(active_tariff.base_price) }}</strong>
+                    &nbsp;&middot;&nbsp;
+                    <span class="text-muted">Pro Min.:</span> <strong>CHF {{ '%.2f'|format(active_tariff.minute_price) }}</strong>
+                </div>
+            {% else %}
+                <div style="color:var(--danger); font-weight:600; margin-top:0.5rem;">Kein Tarif aktiv</div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<div class="page-header mt-4">
+    <h4 class="mb-0">Schnellzugriff</h4>
+</div>
+<div class="quick-actions">
+    <a href="{{ url_for('admin.users') }}" class="btn btn-outline-primary">&#128100; Benutzer</a>
+    <a href="{{ url_for('admin.scooters') }}" class="btn btn-outline-primary">&#128740; Scooter</a>
+    <a href="{{ url_for('admin.rides') }}" class="btn btn-outline-primary">&#128337; Fahrten</a>
+    <a href="{{ url_for('admin.transactions') }}" class="btn btn-outline-primary">&#128176; Transaktionen</a>
+    <a href="{{ url_for('admin.tariffs') }}" class="btn btn-outline-primary">&#128178; Tarife</a>
+</div>
+{% endblock %}

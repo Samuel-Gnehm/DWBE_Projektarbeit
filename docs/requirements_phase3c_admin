@@ -1,0 +1,305 @@
+# Phase 3c – Admin-Bereich
+
+## Ziel
+Vollständiger Admin-Bereich: Ein eingeloggter Admin kann alle User, alle Scooter (plattformweit), alle Fahrten und alle Transaktionen einsehen und verwalten. Der Admin ist ausserdem der einzige, der Tarife anlegen und ändern darf. Nach Abschluss dieser Phase ist die gesamte Plattform-Verwaltung implementiert.
+
+---
+
+## Kontext
+- Phase 1 (Projektstruktur, Modelle, DB-Migration) ist abgeschlossen.
+- Phase 2 (Auth, Login, Registrierung, Rollenkonzept) ist abgeschlossen.
+- Phase 3a (Provider-Bereich) ist abgeschlossen – Tarif-Anlegen im Provider-Bereich wurde bewusst **nicht** implementiert oder wurde entfernt, da Tarife eine Admin-Aufgabe sind.
+- Phase 3b (Rider-Bereich) ist abgeschlossen.
+- Blueprint `admin` existiert **noch nicht** – er muss neu angelegt und registriert werden.
+- Bestehende Dateien **nicht überschreiben**, sondern ergänzen.
+- `@admin_required` Decorator ist in `app/utils.py` bereits vorhanden.
+- Alle Modelle sind in `app/models/` verfügbar: `User`, `Scooter`, `Tariff`, `Ride`, `PaymentMethod`, `Transaction`.
+
+---
+
+## Aufgaben
+
+### 1. Blueprint `admin` anlegen
+
+Neue Datei: `app/blueprints/admin/__init__.py`
+
+```python
+from flask import Blueprint
+
+admin_bp = Blueprint('admin', __name__)
+
+from . import routes
+```
+
+Registrierung in `app/__init__.py` (in `create_app()`):
+
+```python
+from .blueprints.admin import admin_bp
+app.register_blueprint(admin_bp, url_prefix='/admin')
+```
+
+---
+
+### 2. Routen (`app/blueprints/admin/routes.py`)
+
+Alle Routen sind mit `@login_required` und `@admin_required` geschützt.
+
+| Methode    | Route                              | Beschreibung                                  |
+|------------|------------------------------------|-----------------------------------------------|
+| GET        | `/admin/dashboard`                 | Admin-Dashboard (Plattform-Kennzahlen)        |
+| GET        | `/admin/users`                     | Alle User auflisten                           |
+| GET        | `/admin/users/<uid>`               | User-Detail (Fahrten, Zahlungsmethoden)       |
+| POST       | `/admin/users/<uid>/toggle-status` | User aktivieren / deaktivieren                |
+| GET        | `/admin/scooters`                  | Alle Scooter aller Provider                   |
+| POST       | `/admin/scooters/<uid>/toggle-status` | Scooter-Status zwischen `available` und `disabled` wechseln |
+| GET        | `/admin/rides`                     | Alle Fahrten (alle User)                      |
+| GET        | `/admin/rides/<uid>`               | Fahrt-Detail                                  |
+| GET        | `/admin/transactions`              | Alle Transaktionen                            |
+| GET        | `/admin/tariffs`                   | Tarif-Übersicht und -Verwaltung               |
+| GET / POST | `/admin/tariffs/add`               | Neuen Tarif anlegen (deaktiviert bisherigen)  |
+
+> **Hinweis:** Die Route `/admin/dashboard` wird aus dem `main` Blueprint entfernt und hier neu implementiert. Im `main` Blueprint bleibt nur ein Redirect auf `/admin/dashboard`.
+
+---
+
+### 3. Formulare (`app/blueprints/admin/forms.py`)
+
+Mit Flask-WTF:
+
+**`TariffForm`** (identisch mit der Form aus Phase 3a, falls dort vorhanden – sonst neu anlegen):
+- `base_price` – DecimalField, Required, places=2, NumberRange(min=0), Label: „Basispreis (CHF)"
+- `minute_price` – DecimalField, Required, places=2, NumberRange(min=0), Label: „Preis pro Minute (CHF)"
+- `valid_from` – DateField, Required, Label: „Gültig ab"
+
+---
+
+### 4. Routen-Logik
+
+#### GET `/admin/dashboard`
+Plattform-Kennzahlen sammeln und ans Template übergeben:
+
+```python
+from app.models import User, Scooter, Ride, Transaction
+
+total_users     = User.query.filter_by(user_rolle='user').count()
+total_providers = User.query.filter_by(user_rolle='provider').count()
+total_scooters  = Scooter.query.count()
+active_scooters = Scooter.query.filter_by(status='available').count()
+rented_scooters = Scooter.query.filter_by(status='rented').count()
+total_rides     = Ride.query.filter(Ride.endzeit != None).count()
+active_rides    = Ride.query.filter_by(endzeit=None).count()
+total_revenue   = db.session.query(db.func.sum(Transaction.betrag)).filter_by(status='completed').scalar() or 0
+active_tariff   = Tariff.get_active()
+```
+
+#### GET `/admin/users`
+1. Alle User laden (alle Rollen), nach `created_at` absteigend sortiert
+2. Optional: Query-Parameter `?rolle=user|provider|admin` als Filter
+3. An Template übergeben
+
+#### GET `/admin/users/<uid>`
+1. User per UID laden, 404 wenn nicht gefunden
+2. Fahrten des Users laden (falls Rolle `user`): letzte 10, absteigend nach Startzeit
+3. Scooter des Users laden (falls Rolle `provider`): alle
+4. Template mit User, Fahrten/Scootern rendern
+
+#### POST `/admin/users/<uid>/toggle-status`
+1. User per UID laden, 404 wenn nicht gefunden
+2. Geschäftsregel: Admin-User darf nicht deaktiviert werden → Flash „Admin-Accounts können nicht deaktiviert werden.", Redirect
+3. Status umschalten:
+   ```python
+   user.status = 'deactivated' if user.status == 'active' else 'active'
+   ```
+4. Commit, Flash „User {username} wurde {aktiviert/deaktiviert}.", Redirect zu `/admin/users`
+
+#### GET `/admin/scooters`
+1. Alle Scooter laden (alle Provider), mit Provider-Infos via Join oder Relationship
+2. Optional: Query-Parameter `?status=available|rented|maintenance|disabled` als Filter
+3. An Template übergeben
+
+#### POST `/admin/scooters/<uid>/toggle-status`
+1. Scooter per UID laden, 404 wenn nicht gefunden
+2. Geschäftsregel: Scooter mit Status `rented` kann nicht manuell geändert werden → Flash „Scooter ist gerade verliehen.", Redirect
+3. Status wechseln: `available` → `disabled`, `disabled` → `available`, `maintenance` → `available`
+4. Commit, Flash, Redirect zu `/admin/scooters`
+
+#### GET `/admin/rides`
+1. Alle Fahrten laden, absteigend nach `startzeit`
+2. Optional: Query-Parameter `?status=active|completed` als Filter (`active` = endzeit is None)
+3. An Template übergeben (mit Rider-Name und Scooter-Modell via Relationship)
+
+#### GET `/admin/rides/<uid>`
+1. Fahrt per UID laden, 404 wenn nicht gefunden
+2. Transaktion laden: `Transaction.query.filter_by(ride_uid=ride.uid).first()`
+3. Template mit allen Details rendern
+
+#### GET `/admin/transactions`
+1. Alle Transaktionen laden, absteigend nach `created_at`
+2. Optional: Query-Parameter `?status=pending|completed|failed` als Filter
+3. Gesamtsumme aller `completed`-Transaktionen berechnen
+4. An Template übergeben
+
+#### GET `/admin/tariffs`
+1. Alle Tarife laden, absteigend nach `valid_from`
+2. Aktiven Tarif hervorheben
+3. `TariffForm` instanziieren und mitgeben (Formular direkt auf dieser Seite)
+4. Bei POST und gültigem Formular (Route akzeptiert auch POST):
+   - Bisherigen aktiven Tarif deaktivieren:
+     ```python
+     active = Tariff.get_active()
+     if active:
+         active.is_active = False
+         active.valid_to = form.valid_from.data
+     ```
+   - Neuen `Tariff` anlegen mit `is_active=True`, `valid_to=None`
+   - Commit, Flash „Neuer Tarif aktiviert.", Redirect zu `/admin/tariffs`
+
+> Diese Route übernimmt die Tarif-Verwaltung vollständig. Falls in Phase 3a eine `/provider/tariffs/add`-Route existiert, soll sie entfernt oder auf diese Seite weitergeleitet werden.
+
+---
+
+### 5. Templates
+
+Alle Templates erben von `templates/base.html`.
+
+**Ordner:** `templates/admin/`
+
+#### `admin/dashboard.html`
+- Überschrift „Admin-Dashboard"
+- Kennzahlen-Grid (Bootstrap Cards, 2–3 pro Zeile):
+  - Fahrer (total)
+  - Anbieter (total)
+  - Scooter gesamt / davon verfügbar / davon verliehen
+  - Abgeschlossene Fahrten
+  - Aktive Fahrten
+  - Umsatz gesamt (CHF, aus completed Transactions)
+  - Aktiver Tarif (Basispreis + Minutenpreis oder „Kein Tarif aktiv" in rot)
+- Schnelllinks zu allen Admin-Bereichen
+
+#### `admin/users.html`
+- Überschrift „Benutzer"
+- Filter-Tabs oder Dropdown: Alle / Fahrer / Anbieter / Admin
+- Tabelle: Vorname Nachname, Username, E-Mail, Rolle (Badge), Status (Badge), Letzter Login, Aktionen
+- Aktionen: „Details" (Link), „Aktivieren/Deaktivieren" (POST-Button)
+
+**Rollen-Badges:**
+| Rolle    | Badge-Klasse   |
+|----------|----------------|
+| admin    | `bg-danger`    |
+| provider | `bg-info`      |
+| user     | `bg-secondary` |
+
+**Status-Badges:**
+| Status      | Badge-Klasse  |
+|-------------|---------------|
+| active      | `bg-success`  |
+| deactivated | `bg-danger`   |
+
+#### `admin/user_detail.html`
+- User-Profil: Name, Username, E-Mail, Rolle, Status, Erstellt am, Letzter Login
+- Wenn Rolle `user`: Tabelle der letzten 10 Fahrten (Datum, Scooter, Dauer, Preis)
+- Wenn Rolle `provider`: Tabelle der Scooter (Modell, Status, KM gesamt)
+- Button „Aktivieren/Deaktivieren" (POST)
+
+#### `admin/scooters.html`
+- Überschrift „Alle Scooter"
+- Filter nach Status (Tabs oder Dropdown)
+- Tabelle: Modell, Anbieter (Username), Status (Badge), Akku, KM gesamt, QR-Code, Aktionen
+- Aktion: „Status ändern" (POST-Button, nur wenn nicht `rented`)
+
+#### `admin/rides.html`
+- Überschrift „Alle Fahrten"
+- Filter: Alle / Aktiv / Abgeschlossen
+- Tabelle: Fahrer, Scooter, Startzeit, Endzeit (oder „aktiv"), Dauer, KM, Preis, Link „Details"
+
+#### `admin/ride_detail.html`
+- Alle Fahrtdaten (identisch zu Rider-Quittung, aber ohne Zugriffsschutz für Admin)
+- Transaktion mit Status und Betrag
+
+#### `admin/transactions.html`
+- Überschrift „Transaktionen"
+- Gesamtumsatz (completed) hervorgehoben oben
+- Filter nach Status
+- Tabelle: Datum, Fahrer, Betrag, Status (Badge), Zahlungsmethode (maskiert), Link zur Fahrt
+
+#### `admin/tariffs.html`
+- Überschrift „Tarife"
+- Aktiver Tarif als hervorgehobene Card oben (grüner Rand)
+- Tabelle aller Tarife: Basispreis, Minutenpreis, Gültig ab, Gültig bis, Status
+- Formular „Neuen Tarif anlegen" direkt auf der Seite (kein separates Template nötig)
+- Hinweistext: „Ein neuer Tarif deaktiviert automatisch den aktuell aktiven Tarif."
+
+---
+
+### 6. Navbar aktualisieren (`templates/base.html`)
+
+Für eingeloggte Admins einen Navigationsbereich ergänzen:
+
+```html
+{% if current_user.is_authenticated and current_user.user_rolle == 'admin' %}
+  <a class="nav-link" href="/admin/users">User</a>
+  <a class="nav-link" href="/admin/scooters">Scooter</a>
+  <a class="nav-link" href="/admin/rides">Fahrten</a>
+  <a class="nav-link" href="/admin/transactions">Transaktionen</a>
+  <a class="nav-link" href="/admin/tariffs">Tarife</a>
+{% endif %}
+```
+
+### 7. `main` Blueprint anpassen
+
+Die Platzhalter-Route `/admin/dashboard` im `main` Blueprint durch einen Redirect ersetzen:
+
+```python
+@main_bp.route('/admin/dashboard')
+@login_required
+@admin_required
+def admin_dashboard():
+    return redirect(url_for('admin.dashboard'))
+```
+
+---
+
+## Acceptance Criteria
+
+Phase 3c gilt als abgeschlossen wenn:
+
+- [ ] `GET /admin/dashboard` zeigt Plattform-Kennzahlen (User, Scooter, Fahrten, Umsatz)
+- [ ] `GET /admin/users` listet alle User aller Rollen
+- [ ] Admin kann einen User aktivieren und deaktivieren (Status-Toggle)
+- [ ] Admin-Accounts können nicht deaktiviert werden (Flash-Message)
+- [ ] `GET /admin/scooters` listet alle Scooter aller Provider
+- [ ] Admin kann Scooter-Status ändern (ausser bei `rented`)
+- [ ] `GET /admin/rides` listet alle Fahrten der Plattform
+- [ ] `GET /admin/transactions` listet alle Transaktionen mit Gesamtumsatz
+- [ ] Admin kann neuen Tarif anlegen – bisheriger Tarif wird automatisch deaktiviert
+- [ ] Tarif-Anlegen ist **nur** über `/admin/tariffs` möglich (nicht mehr im Provider-Bereich)
+- [ ] Nicht eingeloggte User werden auf `/auth/login` weitergeleitet
+- [ ] User mit Rolle `user` oder `provider` erhalten 403 auf allen `/admin/*` Routen
+
+---
+
+## Hinweise für Claude Code
+
+- `db.func.sum()` für den Gesamtumsatz gibt `None` zurück wenn keine Transaktionen existieren – mit `or 0` absichern.
+- Relationships nutzen statt separate Queries: `ride.rider` gibt den User-Objekt zurück, `scooter.provider` den Provider – setzt korrekte Backref-Definitionen in den Modellen voraus.
+- Filter per Query-Parameter sauber implementieren:
+  ```python
+  rolle_filter = request.args.get('rolle')
+  query = User.query
+  if rolle_filter in ('user', 'provider', 'admin'):
+      query = query.filter_by(user_rolle=rolle_filter)
+  users = query.order_by(User.created_at.desc()).all()
+  ```
+- `admin_required` aus `app.utils` importieren, nicht neu definieren.
+- Keine Logik in Templates – Kennzahlen alle in der Route berechnen.
+- POST-Buttons für toggle-status immer mit CSRF-Token:
+  ```html
+  <form method="POST" action="/admin/users/{{ user.uid }}/toggle-status">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <button type="submit" class="btn btn-sm btn-warning">
+      {{ 'Deaktivieren' if user.status == 'active' else 'Aktivieren' }}
+    </button>
+  </form>
+  ```
+- Falls im Provider-Blueprint noch eine `/provider/tariffs/add`-Route existiert: diese entfernen oder auf `/admin/tariffs` weiterleiten.
+- Alle Tabellen mit Bootstrap `table table-striped table-hover` stylen – konsistent mit den anderen Bereichen.

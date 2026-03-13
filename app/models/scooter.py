@@ -18,6 +18,7 @@ class Scooter(db.Model):
     gefahrene_km_gesamt = db.Column(db.Numeric(10, 2), nullable=False,
                                     default=0)
     battery_level = db.Column(db.SmallInteger, nullable=False, default=100)
+    maintenance_since = db.Column(db.DateTime, nullable=True)
     latitude = db.Column(db.Numeric(9, 6), nullable=True)
     longitude = db.Column(db.Numeric(9, 6), nullable=True)
     created_at = db.Column(db.DateTime, nullable=False,

@@ -14,7 +14,7 @@
 | Username      | ATTR | NVARCHAR(50)          | Ja     | Eindeutiger Benutzername     |
 | Email         | ATTR | NVARCHAR(255)         | Ja     | Eindeutige E-Mail            |
 | Passwort_Hash | ATTR | NVARCHAR(255)         | Nein   | Gehashter Passwortwert       |
-| User_Rolle    | ATTR | NVARCHAR(20)          | Nein   | 'provider' oder 'user'       |
+| User_Rolle    | ATTR | NVARCHAR(20)          | Nein   | 'provider', 'user' oder 'admin' |
 | Status        | ATTR | NVARCHAR(20)          | Nein   | 'active' oder 'deactivated'  |
 | Last_Login    | ATTR | DATETIME2             | Nein   | Zeitpunkt des letzten Logins |
 | Created_At    | ATTR | DATETIME2             | Nein   | Erstellungsdatum             |

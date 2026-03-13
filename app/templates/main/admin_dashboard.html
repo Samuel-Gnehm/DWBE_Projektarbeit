@@ -1,0 +1,37 @@
+{% extends 'base.html' %}
+
+{% block title %}Admin-Dashboard – E-Scooter Verleih{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>Admin-Dashboard</h1>
+    <p class="text-muted mb-0">Eingeloggt als: <strong>{{ current_user.username }}</strong> &nbsp;<span class="badge bg-danger">Administrator</span></p>
+</div>
+
+<div class="row g-3">
+    <div class="col-md-4">
+        <div class="stat-card">
+            <div class="stat-icon icon-success">&#128100;</div>
+            <div class="stat-label">Fahrer-Bereich</div>
+            <p class="text-muted mt-2 mb-3" style="font-size:0.875rem;">Verwaltung der Fahrer-Accounts.</p>
+            <a href="{{ url_for('main.dashboard') }}" class="btn btn-outline-success btn-sm">Fahrer-Dashboard</a>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="stat-card">
+            <div class="stat-icon icon-info">&#127970;</div>
+            <div class="stat-label">Anbieter-Bereich</div>
+            <p class="text-muted mt-2 mb-3" style="font-size:0.875rem;">Verwaltung der Anbieter-Accounts.</p>
+            <a href="{{ url_for('main.provider_dashboard') }}" class="btn btn-outline-primary btn-sm">Anbieter-Dashboard</a>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="stat-card">
+            <div class="stat-icon icon-danger">&#128272;</div>
+            <div class="stat-label">Admin-Bereich</div>
+            <p class="text-muted mt-2 mb-3" style="font-size:0.875rem;">Systemverwaltung und Konfiguration.</p>
+            <span class="btn btn-danger btn-sm disabled">Aktiv</span>
+        </div>
+    </div>
+</div>
+{% endblock %}

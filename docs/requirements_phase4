@@ -1,0 +1,428 @@
+# Phase 4 – REST-API (JWT-Authentifizierung)
+
+## Ziel
+Vollständige REST-API: Externe Clients (curl, Postman, httpie) können sich per JWT authentifizieren und auf applikationsspezifische Daten zugreifen. Nach Abschluss dieser Phase ist die App vollständig ohne Browser bedienbar und die API-Dokumentationspflicht der Aufgabenstellung erfüllt.
+
+---
+
+## Kontext
+- Phase 1–3c sind abgeschlossen.
+- Blueprint `api` existiert bereits als Platzhalter aus Phase 1, registriert unter `/api`.
+- Bestehende Dateien **nicht überschreiben**, sondern ergänzen.
+- Alle Modelle sind in `app/models/` verfügbar.
+- `flask-jwt-extended` wird neu eingeführt – muss in `requirements.txt` ergänzt und in `extensions.py` initialisiert werden.
+
+---
+
+## Aufgaben
+
+### 1. Abhängigkeit ergänzen (`requirements.txt`)
+
+```
+flask-jwt-extended
+```
+
+---
+
+### 2. JWT in Extensions initialisieren (`app/extensions.py`)
+
+```python
+from flask_jwt_extended import JWTManager
+
+jwt = JWTManager()
+```
+
+In `create_app()` initialisieren:
+
+```python
+from .extensions import db, login_manager, migrate, jwt
+
+jwt.init_app(app)
+```
+
+---
+
+### 3. JWT-Konfiguration (`app/config.py`)
+
+In der `Config`-Basisklasse ergänzen:
+
+```python
+from datetime import timedelta
+
+JWT_SECRET_KEY = os.environ.get('JWT_SECRET_KEY', 'jwt-dev-secret-change-in-production')
+JWT_ACCESS_TOKEN_EXPIRES = timedelta(hours=1)
+```
+
+In `.env.example` ergänzen:
+```
+JWT_SECRET_KEY=change-me-in-production
+```
+
+---
+
+### 4. API Blueprint ausbauen (`app/blueprints/api/__init__.py`)
+
+```python
+from flask import Blueprint
+
+api_bp = Blueprint('api', __name__)
+
+from . import routes
+```
+
+---
+
+### 5. Routen (`app/blueprints/api/routes.py`)
+
+Übersicht aller Endpunkte:
+
+| Methode | Route                    | Auth         | Beschreibung                                 |
+|---------|--------------------------|--------------|----------------------------------------------|
+| POST    | `/api/auth/login`        | –            | Login, gibt JWT-Token zurück                 |
+| GET     | `/api/scooters`          | JWT optional | Alle verfügbaren Scooter (public)            |
+| GET     | `/api/scooters/<uid>`    | JWT optional | Einzelner Scooter                            |
+| POST    | `/api/scooters`          | JWT (Provider) | Scooter anlegen                            |
+| GET     | `/api/rides`             | JWT (Rider)  | Eigene abgeschlossene Fahrten                |
+| GET     | `/api/rides/<uid>`       | JWT (Rider)  | Einzelne Fahrt-Detail                        |
+| GET     | `/api/tariffs/active`    | –            | Aktiver Tarif (public)                       |
+| GET     | `/api/transactions`      | JWT (Rider)  | Eigene Transaktionen                         |
+
+---
+
+### 6. Routen-Logik
+
+#### POST `/api/auth/login`
+
+Kein JWT nötig – gibt bei Erfolg einen Token zurück.
+
+```python
+from flask import request, jsonify
+from flask_jwt_extended import create_access_token
+from app.models import User
+from datetime import datetime
+
+@api_bp.route('/auth/login', methods=['POST'])
+def api_login():
+    data = request.get_json()
+    if not data or not data.get('username') or not data.get('password'):
+        return jsonify({'error': 'username und password erforderlich'}), 400
+
+    user = User.query.filter_by(username=data['username']).first()
+
+    if not user or not user.check_password(data['password']):
+        return jsonify({'error': 'Ungültige Anmeldedaten'}), 401
+
+    if user.status != 'active':
+        return jsonify({'error': 'Account deaktiviert'}), 403
+
+    # last_login aktualisieren
+    user.last_login = datetime.utcnow()
+    from app.extensions import db
+    db.session.commit()
+
+    token = create_access_token(
+        identity=user.uid,
+        additional_claims={'rolle': user.user_rolle}
+    )
+    return jsonify({
+        'access_token': token,
+        'token_type': 'Bearer',
+        'rolle': user.user_rolle,
+        'username': user.username
+    }), 200
+```
+
+---
+
+#### GET `/api/scooters`
+
+Public – kein Token nötig. Gibt alle Scooter mit Status `available` zurück.
+
+```python
+from flask_jwt_extended import jwt_required, get_jwt_identity, verify_jwt_in_request
+from app.models import Scooter
+
+@api_bp.route('/scooters', methods=['GET'])
+def api_get_scooters():
+    scooters = Scooter.query.filter_by(status='available').all()
+    return jsonify([s.to_dict() for s in scooters]), 200
+```
+
+> `to_dict()` muss im `Scooter`-Modell implementiert sein (aus Phase 1). Falls nicht vorhanden, hier ergänzen:
+> ```python
+> def to_dict(self):
+>     return {
+>         'uid': self.uid,
+>         'model': self.model,
+>         'status': self.status,
+>         'battery_level': self.battery_level,
+>         'latitude': float(self.latitude) if self.latitude else None,
+>         'longitude': float(self.longitude) if self.longitude else None,
+>         'gefahrene_km_gesamt': float(self.gefahrene_km_gesamt) if self.gefahrene_km_gesamt else 0.0,
+>         'qr_code': self.qr_code
+>     }
+> ```
+
+---
+
+#### GET `/api/scooters/<uid>`
+
+Public – kein Token nötig.
+
+```python
+@api_bp.route('/scooters/<uid>', methods=['GET'])
+def api_get_scooter(uid):
+    scooter = Scooter.query.get(uid)
+    if not scooter:
+        return jsonify({'error': 'Scooter nicht gefunden'}), 404
+    return jsonify(scooter.to_dict()), 200
+```
+
+---
+
+#### POST `/api/scooters`
+
+JWT erforderlich, Rolle muss `provider` sein.
+
+```python
+from flask_jwt_extended import jwt_required, get_jwt, get_jwt_identity
+import uuid
+
+@api_bp.route('/scooters', methods=['POST'])
+@jwt_required()
+def api_create_scooter():
+    claims = get_jwt()
+    if claims.get('rolle') != 'provider':
+        return jsonify({'error': 'Nur Provider dürfen Scooter anlegen'}), 403
+
+    data = request.get_json()
+    required = ['model', 'battery_level', 'latitude', 'longitude']
+    for field in required:
+        if field not in data:
+            return jsonify({'error': f'Pflichtfeld fehlt: {field}'}), 400
+
+    from app.models import Scooter
+    from app.extensions import db
+    from decimal import Decimal
+
+    scooter = Scooter(
+        uid_provider=get_jwt_identity(),
+        model=data['model'],
+        qr_code=str(uuid.uuid4()),
+        status='available',
+        battery_level=int(data['battery_level']),
+        latitude=Decimal(str(data['latitude'])),
+        longitude=Decimal(str(data['longitude'])),
+        gefahrene_km_gesamt=Decimal('0.0')
+    )
+    db.session.add(scooter)
+    db.session.commit()
+    return jsonify(scooter.to_dict()), 201
+```
+
+---
+
+#### GET `/api/rides`
+
+JWT erforderlich, gibt nur eigene abgeschlossene Fahrten zurück.
+
+```python
+from flask_jwt_extended import jwt_required, get_jwt_identity
+from app.models import Ride
+
+@api_bp.route('/rides', methods=['GET'])
+@jwt_required()
+def api_get_rides():
+    uid = get_jwt_identity()
+    rides = Ride.query.filter(
+        Ride.rider_uid == uid,
+        Ride.endzeit != None
+    ).order_by(Ride.startzeit.desc()).all()
+    return jsonify([r.to_dict() for r in rides]), 200
+```
+
+> `to_dict()` muss im `Ride`-Modell implementiert sein (aus Phase 1). Falls nicht vorhanden, hier ergänzen:
+> ```python
+> def to_dict(self):
+>     return {
+>         'uid': self.uid,
+>         'scooter_uid': self.scooter_uid,
+>         'startzeit': self.startzeit.isoformat() if self.startzeit else None,
+>         'endzeit': self.endzeit.isoformat() if self.endzeit else None,
+>         'gefahrene_km': float(self.gefahrene_km) if self.gefahrene_km else 0.0,
+>         'gesamtpreis': float(self.gesamtpreis) if self.gesamtpreis else None
+>     }
+> ```
+
+---
+
+#### GET `/api/rides/<uid>`
+
+JWT erforderlich, nur eigene Fahrt.
+
+```python
+@api_bp.route('/rides/<uid>', methods=['GET'])
+@jwt_required()
+def api_get_ride(uid):
+    current_uid = get_jwt_identity()
+    ride = Ride.query.get(uid)
+    if not ride:
+        return jsonify({'error': 'Fahrt nicht gefunden'}), 404
+    if ride.rider_uid != current_uid:
+        return jsonify({'error': 'Zugriff verweigert'}), 403
+    return jsonify(ride.to_dict()), 200
+```
+
+---
+
+#### GET `/api/tariffs/active`
+
+Public – kein Token nötig.
+
+```python
+from app.models import Tariff
+
+@api_bp.route('/tariffs/active', methods=['GET'])
+def api_get_active_tariff():
+    tariff = Tariff.get_active()
+    if not tariff:
+        return jsonify({'error': 'Kein aktiver Tarif vorhanden'}), 404
+    return jsonify({
+        'uid': tariff.uid,
+        'base_price': float(tariff.base_price),
+        'minute_price': float(tariff.minute_price),
+        'valid_from': tariff.valid_from.isoformat() if tariff.valid_from else None
+    }), 200
+```
+
+---
+
+#### GET `/api/transactions`
+
+JWT erforderlich, gibt nur eigene Transaktionen zurück.
+
+```python
+from app.models import Transaction, Ride
+
+@api_bp.route('/transactions', methods=['GET'])
+@jwt_required()
+def api_get_transactions():
+    uid = get_jwt_identity()
+    # Transaktionen über Ride-Relationship filtern
+    transactions = (
+        Transaction.query
+        .join(Ride, Transaction.ride_uid == Ride.uid)
+        .filter(Ride.rider_uid == uid)
+        .order_by(Transaction.created_at.desc())
+        .all()
+    )
+    return jsonify([{
+        'uid': t.uid,
+        'ride_uid': t.ride_uid,
+        'betrag': float(t.betrag),
+        'status': t.status,
+        'created_at': t.created_at.isoformat() if t.created_at else None
+    } for t in transactions]), 200
+```
+
+---
+
+### 7. Fehlerbehandlung (globale JSON-Fehler-Handler)
+
+In `app/__init__.py` ergänzen, damit die API bei Fehlern JSON statt HTML zurückgibt:
+
+```python
+from flask_jwt_extended import JWTManager
+from flask import jsonify
+
+# JWT-Fehler-Handler
+@jwt.unauthorized_loader
+def unauthorized_callback(error):
+    return jsonify({'error': 'Kein Token vorhanden oder ungültig'}), 401
+
+@jwt.expired_token_loader
+def expired_token_callback(jwt_header, jwt_payload):
+    return jsonify({'error': 'Token abgelaufen'}), 401
+
+@jwt.invalid_token_loader
+def invalid_token_callback(error):
+    return jsonify({'error': 'Ungültiger Token'}), 422
+```
+
+---
+
+### 8. `.env.example` ergänzen
+
+```
+JWT_SECRET_KEY=change-me-in-production
+```
+
+---
+
+## API testen (curl-Beispiele für Dokumentation)
+
+Diese Beispiele können direkt in die Projektdokumentation übernommen werden:
+
+```bash
+# 1. Login – Token holen
+curl -X POST http://localhost:5000/api/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"username": "testuser", "password": "Passwort123!"}'
+
+# Antwort:
+# { "access_token": "eyJ...", "token_type": "Bearer", "rolle": "user" }
+
+# 2. Verfügbare Scooter abrufen (kein Token nötig)
+curl http://localhost:5000/api/scooters
+
+# 3. Eigene Fahrten abrufen (Token erforderlich)
+curl http://localhost:5000/api/rides \
+  -H "Authorization: Bearer eyJ..."
+
+# 4. Aktiven Tarif abrufen (kein Token nötig)
+curl http://localhost:5000/api/tariffs/active
+
+# 5. Scooter anlegen als Provider
+curl -X POST http://localhost:5000/api/scooters \
+  -H "Authorization: Bearer eyJ..." \
+  -H "Content-Type: application/json" \
+  -d '{"model": "Xiaomi Pro 2", "battery_level": 85, "latitude": 47.3769, "longitude": 8.5417}'
+
+# 6. Eigene Transaktionen abrufen
+curl http://localhost:5000/api/transactions \
+  -H "Authorization: Bearer eyJ..."
+```
+
+---
+
+## Acceptance Criteria
+
+Phase 4 gilt als abgeschlossen wenn:
+
+- [ ] `POST /api/auth/login` mit gültigen Daten gibt einen JWT-Token zurück
+- [ ] `POST /api/auth/login` mit falschen Daten gibt 401 zurück
+- [ ] `GET /api/scooters` gibt verfügbare Scooter als JSON zurück (kein Token nötig)
+- [ ] `GET /api/rides` ohne Token gibt 401 zurück
+- [ ] `GET /api/rides` mit gültigem Token gibt eigene Fahrten zurück
+- [ ] `GET /api/rides/<uid>` einer fremden Fahrt gibt 403 zurück
+- [ ] `POST /api/scooters` mit Provider-Token legt Scooter an (201)
+- [ ] `POST /api/scooters` mit User-Token (nicht Provider) gibt 403 zurück
+- [ ] `GET /api/tariffs/active` gibt aktiven Tarif zurück (kein Token nötig)
+- [ ] `GET /api/transactions` gibt eigene Transaktionen zurück (JWT erforderlich)
+- [ ] Abgelaufener oder ungültiger Token gibt JSON-Fehlermeldung (nicht HTML)
+- [ ] Alle Endpunkte mit curl testbar (kein Browser nötig)
+
+---
+
+## Hinweise für Claude Code
+
+- `flask-jwt-extended` in `requirements.txt` ergänzen – das Paket ist noch nicht installiert.
+- `JWT_SECRET_KEY` **muss** in der Config gesetzt sein – sonst wirft `flask-jwt-extended` beim Start einen Fehler.
+- `create_access_token(identity=user.uid)` – `identity` ist ein String (UUID), kein Integer.
+- `get_jwt_identity()` gibt die `identity` zurück (also `user.uid` als String).
+- `get_jwt()` gibt die zusätzlichen Claims zurück (z.B. `rolle`) – damit Rollenprüfung in der Route ohne DB-Query möglich.
+- `Decimal`-Werte aus SQLAlchemy können nicht direkt JSON-serialisiert werden – immer mit `float()` konvertieren in `to_dict()`.
+- `datetime`-Objekte mit `.isoformat()` serialisieren – gibt ISO-8601-String zurück (z.B. `"2025-03-13T14:30:00"`).
+- Die globalen JWT-Fehler-Handler müssen nach `jwt.init_app(app)` registriert werden – am besten direkt in `create_app()`.
+- Keine Flask-WTF Formulare in der API – JSON-Body direkt mit `request.get_json()` verarbeiten.
+- CSRF-Schutz gilt **nicht** für die API (kein Browser, kein Session-Cookie) – Flask-WTF greift hier nicht.

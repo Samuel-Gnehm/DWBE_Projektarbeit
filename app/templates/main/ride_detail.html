@@ -1,0 +1,85 @@
+{% extends 'base.html' %}
+
+{% block title %}Fahrt-Quittung – E-Scooter Verleih{% endblock %}
+
+{% block content %}
+<div class="page-header d-flex align-items-center justify-content-between flex-wrap gap-2">
+    <h1>&#128204; Fahrt-Quittung</h1>
+    <a href="/rides/history" class="btn btn-outline-secondary btn-sm">&larr; Meine Fahrten</a>
+</div>
+
+<div class="card mt-1" style="max-width:640px;">
+    <div class="card-body">
+        <h5 class="card-title">{{ scooter.model }}</h5>
+
+        <hr>
+
+        {% set duration_sec = (ride.endzeit - ride.startzeit).total_seconds()|int %}
+        {% set duration_h = duration_sec // 3600 %}
+        {% set duration_m = (duration_sec % 3600) // 60 %}
+        {% set duration_s = duration_sec % 60 %}
+
+        <dl class="row">
+            <dt class="col-sm-4">Startzeit</dt>
+            <dd class="col-sm-8">{{ ride.startzeit.strftime('%d.%m.%Y %H:%M:%S') }} UTC</dd>
+
+            <dt class="col-sm-4">Endzeit</dt>
+            <dd class="col-sm-8">{{ ride.endzeit.strftime('%d.%m.%Y %H:%M:%S') }} UTC</dd>
+
+            <dt class="col-sm-4">Dauer</dt>
+            <dd class="col-sm-8">
+                {{ '%02d'|format(duration_h) }}:{{ '%02d'|format(duration_m) }}:{{ '%02d'|format(duration_s) }}
+            </dd>
+
+            <dt class="col-sm-4">Gefahrene KM</dt>
+            <dd class="col-sm-8">{{ '%.2f'|format(ride.gefahrene_km|float) }} km</dd>
+        </dl>
+
+        <hr>
+        <h6 class="text-muted mb-3" style="text-transform:uppercase; letter-spacing:0.06em; font-size:0.75rem;">Abrechnung</h6>
+        <dl class="row">
+            <dt class="col-sm-4">Basispreis</dt>
+            <dd class="col-sm-8">CHF {{ '%.2f'|format(tariff.base_price|float) }}</dd>
+
+            <dt class="col-sm-4">Minutenpreis</dt>
+            <dd class="col-sm-8">
+                CHF {{ '%.2f'|format(tariff.minute_price|float) }} ×
+                {{ '%d'|format(duration_m + duration_h * 60) }} min
+            </dd>
+
+            <dt class="col-sm-4" style="font-size:1.1rem;">Gesamtpreis</dt>
+            <dd class="col-sm-8" style="font-size:1.1rem; font-weight:700; color:var(--success);">
+                CHF {{ '%.2f'|format(ride.gesamtpreis|float) }}
+            </dd>
+        </dl>
+
+        <hr>
+        <h6 class="text-muted mb-3" style="text-transform:uppercase; letter-spacing:0.06em; font-size:0.75rem;">Zahlung</h6>
+        <dl class="row mb-0">
+            <dt class="col-sm-4">Status</dt>
+            <dd class="col-sm-8">
+                {% if transaction %}
+                    {% if transaction.status == 'completed' %}
+                        <span class="badge bg-success">completed</span>
+                    {% elif transaction.status == 'failed' %}
+                        <span class="badge bg-danger">failed</span>
+                    {% else %}
+                        <span class="badge bg-warning">{{ transaction.status }}</span>
+                    {% endif %}
+                {% else %}
+                    <span class="text-muted">–</span>
+                {% endif %}
+            </dd>
+
+            <dt class="col-sm-4">Zahlungsmethode</dt>
+            <dd class="col-sm-8">
+                {% if transaction and transaction.payment_method %}
+                    {{ transaction.payment_method.kartenidentifier_maskiert }}
+                {% else %}
+                    <span class="text-muted">–</span>
+                {% endif %}
+            </dd>
+        </dl>
+    </div>
+</div>
+{% endblock %}

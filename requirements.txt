@@ -3,7 +3,9 @@ flask-sqlalchemy
 flask-migrate
 flask-login
 flask-wtf
+flask-jwt-extended
 pyodbc
 python-dotenv
 gunicorn
 werkzeug
+pytest

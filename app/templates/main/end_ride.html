@@ -1,0 +1,95 @@
+{% extends 'base.html' %}
+
+{% block title %}Fahrt beenden – E-Scooter Verleih{% endblock %}
+
+{% block head %}
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<style>
+  #drop-map { height: 340px; border-radius: var(--radius); border: 1px solid var(--border-color); margin-bottom: 1rem; cursor: crosshair; }
+  .leaflet-popup-content-wrapper { background: #1f2937; color: #f9fafb; border: 1px solid rgba(255,255,255,0.1); }
+  .leaflet-popup-tip { background: #1f2937; }
+  #location-hint { font-size: 0.875rem; color: var(--text-muted); margin-bottom: 1rem; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>&#9634; Fahrt beenden</h1>
+</div>
+
+<div class="card mb-4" style="max-width:600px;">
+    <div class="card-body">
+        <dl class="row mb-0">
+            <dt class="col-sm-4">Scooter</dt>
+            <dd class="col-sm-8">{{ scooter.model }}</dd>
+
+            <dt class="col-sm-4">Startzeit</dt>
+            <dd class="col-sm-8">{{ ride.startzeit.strftime('%d.%m.%Y %H:%M:%S') }} UTC</dd>
+
+            <dt class="col-sm-4">Bisherige Dauer</dt>
+            <dd class="col-sm-8">{{ duration_str }}</dd>
+        </dl>
+    </div>
+</div>
+
+<div style="max-width:600px;">
+    <p class="form-label mb-1">Abstellort auswählen</p>
+    <p id="location-hint">&#128205; Klicke auf die Karte, um den Abstellort zu markieren.</p>
+    <div id="drop-map"></div>
+
+    <form method="POST">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" id="drop_lat" name="drop_lat" value="{{ scooter.latitude or '' }}">
+        <input type="hidden" id="drop_lng" name="drop_lng" value="{{ scooter.longitude or '' }}">
+        <div class="d-flex gap-2">
+            {{ form.submit(class="btn btn-danger") }}
+            <a href="/rides/active" class="btn btn-outline-secondary">Abbrechen</a>
+        </div>
+    </form>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+const initLat = {{ scooter.latitude if scooter.latitude else 47.3769 }};
+const initLng = {{ scooter.longitude if scooter.longitude else 8.5417 }};
+
+const map = L.map('drop-map').setView([initLat, initLng], 15);
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+  attribution: '© OpenStreetMap',
+  maxZoom: 19
+}).addTo(map);
+
+const dropIcon = L.divIcon({
+  className: '',
+  html: '<div style="width:18px;height:18px;border-radius:50%;background:#6366f1;border:3px solid #fff;box-shadow:0 0 6px rgba(0,0,0,0.6)"></div>',
+  iconSize: [18, 18],
+  iconAnchor: [9, 9],
+  popupAnchor: [0, -12]
+});
+
+let marker = L.marker([initLat, initLng], { icon: dropIcon, draggable: true })
+  .addTo(map)
+  .bindPopup('Aktueller Standort')
+  .openPopup();
+
+function updateInputs(lat, lng) {
+  document.getElementById('drop_lat').value = lat.toFixed(6);
+  document.getElementById('drop_lng').value = lng.toFixed(6);
+  document.getElementById('location-hint').innerHTML = `&#10003; Abstellort: ${lat.toFixed(5)}, ${lng.toFixed(5)}`;
+}
+
+marker.on('dragend', e => {
+  const pos = e.target.getLatLng();
+  marker.bindPopup('Abstellort').openPopup();
+  updateInputs(pos.lat, pos.lng);
+});
+
+map.on('click', e => {
+  marker.setLatLng(e.latlng);
+  marker.bindPopup('Abstellort').openPopup();
+  updateInputs(e.latlng.lat, e.latlng.lng);
+});
+</script>
+{% endblock %}

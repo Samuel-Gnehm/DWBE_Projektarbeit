@@ -28,13 +28,14 @@ class Ride(db.Model):
                                   uselist=False, lazy=True)
 
     def calculate_price(self):
-        """Berechnet Gesamtpreis: Basispreis + (Minuten × Minutenpreis)."""
-        if not self.endzeit or not self.tariff:
+        """Berechnet den Gesamtpreis der Fahrt: Basispreis + (Minutenpreis × Minuten)."""
+        from decimal import Decimal
+        if self.endzeit is None or self.startzeit is None:
             return None
-        duration_minutes = (self.endzeit - self.startzeit).total_seconds() / 60
-        price = float(self.tariff.base_price) + \
-                duration_minutes * float(self.tariff.minute_price)
-        return round(price, 2)
+        dauer_sekunden = (self.endzeit - self.startzeit).total_seconds()
+        minuten = Decimal(str(round(dauer_sekunden / 60, 2)))
+        preis = self.tariff.base_price + (self.tariff.minute_price * minuten)
+        return round(preis, 2)
 
     def to_dict(self):
         return {

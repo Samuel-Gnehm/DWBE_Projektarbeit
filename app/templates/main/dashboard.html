@@ -1,0 +1,54 @@
+{% extends 'base.html' %}
+
+{% block title %}Fahrer-Dashboard – E-Scooter Verleih{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>Willkommen, {{ current_user.vorname }}! &#128075;</h1>
+    <p class="text-muted mb-0">Was möchtest du heute unternehmen?</p>
+</div>
+
+{% if active_ride %}
+<div class="alert alert-warning d-flex align-items-center gap-2 mb-4" role="alert">
+    <span style="font-size:1.25rem;">&#9889;</span>
+    <div>
+        <strong>Du hast eine aktive Fahrt!</strong>
+        <a href="/rides/active" class="alert-link ms-2">Zur aktiven Fahrt &rarr;</a>
+    </div>
+</div>
+{% endif %}
+
+<div class="row g-3">
+    <div class="col-md-4">
+        <div class="stat-card h-100">
+            <div class="stat-icon">&#128740;</div>
+            <div class="stat-label">Verfügbare Scooter</div>
+            <p class="mt-2 mb-3" style="color:var(--text-muted); font-size:0.9rem;">Finde einen freien Scooter in deiner Nähe.</p>
+            <a href="/scooters" class="btn btn-primary btn-sm">Scooter anzeigen</a>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="stat-card h-100">
+            <div class="stat-icon icon-info">&#128203;</div>
+            <div class="stat-label">Meine Fahrten</div>
+            <div class="stat-value">{{ completed_count }}</div>
+            <div class="stat-sub">abgeschlossene {{ 'Fahrt' if completed_count == 1 else 'Fahrten' }}</div>
+            <a href="/rides/history" class="btn btn-outline-secondary btn-sm mt-3">Fahrt-Historie</a>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="stat-card h-100">
+            <div class="stat-icon icon-success">&#128179;</div>
+            <div class="stat-label">Zahlungsmethode</div>
+            <div class="mt-2 mb-3" style="font-size:0.9375rem;">
+                {% if active_payment %}
+                    <span style="color:var(--text); font-weight:500;">{{ active_payment.kartenidentifier_maskiert }}</span>
+                {% else %}
+                    <span class="text-muted">Keine hinterlegt</span>
+                {% endif %}
+            </div>
+            <a href="/payment-methods" class="btn btn-outline-secondary btn-sm">Verwalten</a>
+        </div>
+    </div>
+</div>
+{% endblock %}

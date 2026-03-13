@@ -1,0 +1,252 @@
+# Phase 3a – Provider-Bereich (Scooter & Tarife)
+
+## Ziel
+Vollständiger Provider-Bereich: Ein eingeloggter Provider kann seine Scooter verwalten (hinzufügen, bearbeiten, deaktivieren) und den aktiven Tarif einsehen. Nach Abschluss dieser Phase ist der Provider-Bereich vollständig funktionsfähig.
+
+---
+
+## Kontext
+- Phase 1 (Projektstruktur, Modelle, DB-Migration) ist abgeschlossen.
+- Phase 2 (Auth, Login, Registrierung, Rollenkonzept) ist abgeschlossen.
+- Blueprint `provider` existiert **noch nicht** – er muss neu angelegt und registriert werden.
+- Bestehende Dateien **nicht überschreiben**, sondern ergänzen.
+- `@provider_required` Decorator ist in `app/utils.py` bereits vorhanden.
+- Alle Modelle sind in `app/models/` verfügbar: `User`, `Scooter`, `Tariff`.
+
+---
+
+## Aufgaben
+
+### 1. Blueprint `provider` anlegen
+
+Neue Datei: `app/blueprints/provider/__init__.py`
+
+```python
+from flask import Blueprint
+
+provider_bp = Blueprint('provider', __name__)
+
+from . import routes  # Routen aus separater Datei laden
+```
+
+Registrierung in `app/__init__.py` (in `create_app()`):
+
+```python
+from .blueprints.provider import provider_bp
+app.register_blueprint(provider_bp, url_prefix='/provider')
+```
+
+---
+
+### 2. Routen (`app/blueprints/provider/routes.py`)
+
+Alle Routen sind mit `@login_required` und `@provider_required` geschützt.
+
+| Methode    | Route                              | Beschreibung                              |
+|------------|------------------------------------|-------------------------------------------|
+| GET        | `/provider/dashboard`              | Provider-Dashboard (Übersicht, wird aus `main` Blueprint hierher verschoben) |
+| GET        | `/provider/scooters`               | Liste aller eigenen Scooter               |
+| GET / POST | `/provider/scooters/add`           | Scooter hinzufügen                        |
+| GET / POST | `/provider/scooters/<uid>/edit`    | Scooter bearbeiten                        |
+| POST       | `/provider/scooters/<uid>/delete`  | Scooter deaktivieren (soft delete)        |
+| GET        | `/provider/tariffs`                | Aktiven Tarif anzeigen                    |
+| GET / POST | `/provider/tariffs/add`            | Neuen Tarif anlegen                       |
+
+> **Hinweis:** Die Route `/provider/dashboard` wird aus dem `main` Blueprint entfernt und hier neu implementiert. Im `main` Blueprint bleibt nur ein Redirect auf `/provider/dashboard`.
+
+---
+
+### 3. Formulare (`app/blueprints/provider/forms.py`)
+
+Mit Flask-WTF:
+
+**`ScooterForm`** (für Add und Edit):
+- `model` – StringField, Required, Length(max=100), Label: „Modellbezeichnung"
+- `battery_level` – IntegerField, Required, NumberRange(0–100), Label: „Akkustand (%)"
+- `latitude` – DecimalField, Required, places=6, Label: „Breitengrad (Latitude)"
+- `longitude` – DecimalField, Required, places=6, Label: „Längengrad (Longitude)"
+- `status` – SelectField, Choices: `[('available', 'Verfügbar'), ('maintenance', 'In Wartung'), ('disabled', 'Deaktiviert')]`, Label: „Status"
+  > Status `'rented'` ist **nicht wählbar** – dieser wird nur durch Fahrtlogik (Phase 3b) gesetzt.
+
+**`TariffForm`**:
+- `base_price` – DecimalField, Required, places=2, NumberRange(min=0), Label: „Basispreis (CHF)"
+- `minute_price` – DecimalField, Required, places=2, NumberRange(min=0), Label: „Preis pro Minute (CHF)"
+- `valid_from` – DateField, Required, Label: „Gültig ab"
+
+---
+
+### 4. Routen-Logik
+
+#### GET `/provider/dashboard`
+1. Anzahl eigener Scooter abfragen (`Scooter.query.filter_by(uid_provider=current_user.uid).count()`)
+2. Anzahl aktiver Fahrten auf eigenen Scootern abfragen (Scooter mit Status `'rented'`)
+3. Aktiven Tarif laden (`Tariff.get_active()`)
+4. Template rendern mit diesen drei Werten als Kontext
+
+#### GET `/provider/scooters`
+1. Alle Scooter des eingeloggten Providers laden: `Scooter.query.filter_by(uid_provider=current_user.uid).all()`
+2. Liste an Template übergeben
+
+#### GET + POST `/provider/scooters/add`
+1. `ScooterForm` instanziieren
+2. Bei POST und gültigem Formular:
+   - Neues `Scooter`-Objekt erstellen
+   - `uid_provider = current_user.uid`
+   - `qr_code` = automatisch generierter UUID-String (`str(uuid.uuid4())`)
+   - `status = 'available'`
+   - `gefahrene_km_gesamt = 0.0`
+   - In DB speichern, Flash-Message „Scooter erfolgreich hinzugefügt."
+   - Redirect zu `/provider/scooters`
+3. Bei GET: Formular anzeigen
+
+#### GET + POST `/provider/scooters/<uid>/edit`
+1. Scooter per UID laden, 404 wenn nicht gefunden
+2. Sicherheitsprüfung: `scooter.uid_provider != current_user.uid` → 403
+3. Formular mit bestehenden Werten vorbelegen (`obj=scooter`)
+4. Bei POST und gültigem Formular: Felder aktualisieren, commit, Flash-Message, Redirect
+5. Bei GET: Formular mit aktuellen Werten anzeigen
+
+#### POST `/provider/scooters/<uid>/delete`
+1. Scooter per UID laden, 404 wenn nicht gefunden
+2. Sicherheitsprüfung: `scooter.uid_provider != current_user.uid` → 403
+3. Geschäftsregel: Scooter mit Status `'rented'` kann **nicht** deaktiviert werden → Flash-Message „Scooter ist gerade verliehen und kann nicht deaktiviert werden.", Redirect zurück
+4. Status auf `'disabled'` setzen (kein echtes Löschen aus der DB)
+5. Commit, Flash-Message „Scooter deaktiviert.", Redirect zu `/provider/scooters`
+
+#### GET `/provider/tariffs`
+1. Aktiven Tarif laden: `Tariff.get_active()`
+2. Alle Tarife laden (für Übersicht/Historie): `Tariff.query.order_by(Tariff.valid_from.desc()).all()`
+3. An Template übergeben
+
+#### GET + POST `/provider/tariffs/add`
+> **Hinweis:** Tarife sind in dieser Anwendung plattformweit gültig, nicht pro Provider. Das Anlegen eines neuen Tarifs ist daher streng genommen eine Admin-Funktion. Für Phase 3a implementieren wir sie dennoch im Provider-Bereich als vereinfachte Lösung – in Phase 3c (Admin) wird sie dort nochmals zugänglich gemacht.
+
+1. `TariffForm` instanziieren
+2. Bei POST und gültigem Formular:
+   - Geschäftslogik: Bisherigen aktiven Tarif deaktivieren:
+     ```python
+     active = Tariff.get_active()
+     if active:
+         active.is_active = False
+         active.valid_to = form.valid_from.data
+     ```
+   - Neuen `Tariff` anlegen mit `is_active=True`, `valid_to=None`
+   - In DB speichern, Flash-Message „Neuer Tarif aktiviert."
+   - Redirect zu `/provider/tariffs`
+3. Bei GET: Formular anzeigen
+
+---
+
+### 5. Templates
+
+Alle Templates erben von `templates/base.html`.
+
+**Ordner:** `templates/provider/`
+
+#### `provider/dashboard.html`
+- Begrüssung mit `current_user.vorname`
+- Drei Kennzahlen-Karten (Bootstrap Cards):
+  - „Meine Scooter" (Anzahl)
+  - „Aktuell verliehen" (Anzahl mit Status `rented`)
+  - „Aktiver Tarif" (Basispreis + Minutenpreis, oder „Kein Tarif aktiv")
+- Schnelllinks: „Scooter verwalten" → `/provider/scooters`, „Tarife" → `/provider/tariffs`
+
+#### `provider/scooters.html`
+- Tabelle mit Spalten: Modell, QR-Code, Status (als farbiges Badge), Akku (%), KM gesamt, Aktionen
+- Aktionen pro Zeile: „Bearbeiten" (Link), „Deaktivieren" (POST-Button mit Bestätigungs-JS)
+- Button „Scooter hinzufügen" oben rechts
+- Leerzustand: Hinweistext wenn keine Scooter vorhanden
+
+**Status-Badges (Bootstrap-Farben):**
+| Status       | Badge-Klasse        |
+|--------------|---------------------|
+| available    | `bg-success`        |
+| rented       | `bg-primary`        |
+| maintenance  | `bg-warning text-dark` |
+| disabled     | `bg-secondary`      |
+
+#### `provider/scooter_form.html`
+- Wird für Add und Edit verwendet (Titel dynamisch: „Scooter hinzufügen" / „Scooter bearbeiten")
+- Formular mit allen Feldern aus `ScooterForm`
+- CSRF-Token (`{{ form.hidden_tag() }}`)
+- Fehleranzeige pro Feld
+- Abbrechen-Link zurück zu `/provider/scooters`
+
+#### `provider/tariffs.html`
+- Aktiver Tarif hervorgehoben (Bootstrap Card mit grünem Rand)
+- Tabelle aller Tarife: Basispreis, Minutenpreis, Gültig ab, Gültig bis, Status (Aktiv/Inaktiv)
+- Button „Neuen Tarif anlegen" (nur sichtbar, immer klickbar)
+
+#### `provider/tariff_form.html`
+- Formular mit allen Feldern aus `TariffForm`
+- Hinweistext: „Das Anlegen eines neuen Tarifs deaktiviert den aktuell aktiven Tarif."
+- CSRF-Token, Fehleranzeige
+- Abbrechen-Link zurück zu `/provider/tariffs`
+
+---
+
+### 6. Navbar aktualisieren (`templates/base.html`)
+
+Für eingeloggte Provider einen Navigationsbereich ergänzen:
+
+```html
+{% if current_user.is_authenticated and current_user.user_rolle == 'provider' %}
+  <a class="nav-link" href="/provider/scooters">Meine Scooter</a>
+  <a class="nav-link" href="/provider/tariffs">Tarife</a>
+{% endif %}
+```
+
+---
+
+### 7. `main` Blueprint anpassen
+
+Die Route `/provider/dashboard` im `main` Blueprint durch einen Redirect ersetzen:
+
+```python
+@main_bp.route('/provider/dashboard')
+@login_required
+@provider_required
+def provider_dashboard():
+    return redirect(url_for('provider.dashboard'))
+```
+
+---
+
+## Acceptance Criteria
+
+Phase 3a gilt als abgeschlossen wenn:
+
+- [ ] `GET /provider/dashboard` zeigt Kennzahlen (Scooter-Anzahl, verliehene Scooter, aktiver Tarif)
+- [ ] `GET /provider/scooters` listet alle Scooter des eingeloggten Providers
+- [ ] Ein Provider kann einen neuen Scooter hinzufügen – er erscheint danach in der Liste
+- [ ] QR-Code wird automatisch generiert (nicht vom User eingegeben)
+- [ ] Ein Provider kann Modell, Status, Akku und Position eines Scooters bearbeiten
+- [ ] Ein Provider kann nur seine **eigenen** Scooter bearbeiten (fremde → 403)
+- [ ] Ein Scooter mit Status `rented` kann nicht deaktiviert werden (Flash-Message)
+- [ ] Deaktivieren setzt Status auf `disabled` (kein DB-Löschen)
+- [ ] `GET /provider/tariffs` zeigt den aktiven Tarif und die Tarif-Historie
+- [ ] Ein neuer Tarif deaktiviert automatisch den bisherigen aktiven Tarif
+- [ ] Nicht eingeloggte User werden auf `/auth/login` weitergeleitet
+- [ ] User mit Rolle `user` oder `admin` erhalten 403 auf allen `/provider/*` Routen
+
+---
+
+## Hinweise für Claude Code
+
+- `uid_provider` im Scooter-Modell ist ein String (UUID) – kein Integer. Vergleiche mit `current_user.uid`.
+- `qr_code` wird in der Route generiert, **nicht** im Formular – kein Formularfeld dafür.
+- Beim Bearbeiten eines Scooters: Status `'rented'` im SelectField nicht als Option anbieten, aber auch nicht überschreiben wenn der Scooter gerade verliehen ist (Schutz via Geschäftsregel oder Redirect mit Flash-Message).
+- `Tariff.get_active()` gibt `None` zurück wenn kein Tarif aktiv ist – im Template und in der Route darauf prüfen.
+- `DecimalField` in WTF gibt `Decimal`-Objekte zurück – kompatibel mit `DECIMAL(10,2)` in MSSQL.
+- `DateField` in WTF mit `format='%Y-%m-%d'` verwenden.
+- Deaktivieren-Button als POST implementieren (kein GET für destruktive Aktionen):
+  ```html
+  <form method="POST" action="/provider/scooters/{{ scooter.uid }}/delete"
+        onsubmit="return confirm('Scooter wirklich deaktivieren?')">
+    {{ csrf_token() }}
+    <button type="submit" class="btn btn-sm btn-danger">Deaktivieren</button>
+  </form>
+  ```
+- Keine Logik in Templates – alle Berechnungen in der Route oder im Modell.
+- Flash-Messages werden in `base.html` angezeigt – nicht in einzelnen Templates wiederholen.
+- `provider_required` aus `app.utils` importieren, nicht neu definieren.
