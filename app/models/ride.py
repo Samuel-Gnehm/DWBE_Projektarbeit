@@ -1,0 +1,52 @@
+import uuid
+from datetime import datetime
+
+from ..extensions import db
+
+
+class Ride(db.Model):
+    __tablename__ = 'rides'
+
+    uid = db.Column(db.String(36), primary_key=True,
+                    default=lambda: str(uuid.uuid4()))
+    rider_uid = db.Column(db.String(36),
+                          db.ForeignKey('users.uid'), nullable=False)
+    scooter_uid = db.Column(db.String(36),
+                            db.ForeignKey('scooters.uid'), nullable=False)
+    tarif_uid = db.Column(db.String(36),
+                          db.ForeignKey('tariffs.uid'), nullable=False)
+    startzeit = db.Column(db.DateTime, nullable=False,
+                          default=datetime.utcnow)
+    endzeit = db.Column(db.DateTime, nullable=True)   # NULL = Fahrt aktiv
+    gesamtpreis = db.Column(db.Numeric(10, 2), nullable=True)
+    gefahrene_km = db.Column(db.Numeric(10, 2), nullable=False, default=0)
+    created_at = db.Column(db.DateTime, nullable=False,
+                           default=datetime.utcnow)
+
+    # Relationships
+    transaction = db.relationship('Transaction', backref='ride',
+                                  uselist=False, lazy=True)
+
+    def calculate_price(self):
+        """Berechnet Gesamtpreis: Basispreis + (Minuten × Minutenpreis)."""
+        if not self.endzeit or not self.tariff:
+            return None
+        duration_minutes = (self.endzeit - self.startzeit).total_seconds() / 60
+        price = float(self.tariff.base_price) + \
+                duration_minutes * float(self.tariff.minute_price)
+        return round(price, 2)
+
+    def to_dict(self):
+        return {
+            'uid': self.uid,
+            'rider_uid': self.rider_uid,
+            'scooter_uid': self.scooter_uid,
+            'tarif_uid': self.tarif_uid,
+            'startzeit': self.startzeit.isoformat() if self.startzeit else None,
+            'endzeit': self.endzeit.isoformat() if self.endzeit else None,
+            'gesamtpreis': float(self.gesamtpreis) if self.gesamtpreis else None,
+            'gefahrene_km': float(self.gefahrene_km or 0),
+        }
+
+    def __repr__(self):
+        return f'<Ride {self.uid[:8]} rider={self.rider_uid[:8]}>'
