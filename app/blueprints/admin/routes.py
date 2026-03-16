@@ -7,10 +7,11 @@ from app.models.scooter import Scooter
 from app.models.tariff import Tariff
 from app.models.ride import Ride
 from app.models.transaction import Transaction
+from app.models.vehicle_type import VehicleType
 from app.utils import admin_required
 
 from . import admin_bp
-from .forms import TariffForm
+from .forms import TariffForm, VehicleTypeForm
 
 
 # ---------------------------------------------------------------------------
@@ -29,7 +30,8 @@ def dashboard():
     total_rides     = Ride.query.filter(Ride.endzeit != None).count()  # noqa: E711
     active_rides    = Ride.query.filter_by(endzeit=None).count()
     total_revenue   = db.session.query(db.func.sum(Transaction.betrag)).filter_by(status='completed').scalar() or 0
-    active_tariff   = Tariff.get_active()
+    vehicle_types_list = VehicleType.query.order_by(VehicleType.name).all()
+    active_tariffs = [(vt, Tariff.get_active(vt.uid)) for vt in vehicle_types_list]
     return render_template(
         'admin/dashboard.html',
         total_users=total_users,
@@ -40,7 +42,7 @@ def dashboard():
         total_rides=total_rides,
         active_rides=active_rides,
         total_revenue=total_revenue,
-        active_tariff=active_tariff,
+        active_tariffs=active_tariffs,
     )
 
 
@@ -111,14 +113,14 @@ def scooters():
 def scooter_toggle_status(uid):
     scooter = Scooter.query.get_or_404(uid)
     if scooter.status == 'rented':
-        flash('Scooter ist gerade verliehen.', 'warning')
+        flash('Fahrzeug ist gerade verliehen.', 'warning')
         return redirect(url_for('admin.scooters'))
     if scooter.status == 'available':
         scooter.status = 'disabled'
     else:
         scooter.status = 'available'
     db.session.commit()
-    flash(f'Scooter-Status auf „{scooter.status}" gesetzt.', 'success')
+    flash(f'Fahrzeug-Status auf „{scooter.status}" gesetzt.', 'success')
     return redirect(url_for('admin.scooters'))
 
 
@@ -172,20 +174,64 @@ def transactions():
 
 
 # ---------------------------------------------------------------------------
+# Fahrzeugtypen (nur Admin)
+# ---------------------------------------------------------------------------
+
+@admin_bp.route('/vehicle-types', methods=['GET', 'POST'])
+@login_required
+@admin_required
+def vehicle_types():
+    form = VehicleTypeForm()
+    if form.validate_on_submit():
+        existing = VehicleType.query.filter_by(name=form.name.data).first()
+        if existing:
+            flash(f'Fahrzeugtyp \u201e{form.name.data}\u201c existiert bereits.', 'warning')
+        else:
+            vt = VehicleType(name=form.name.data, description=form.description.data or None)
+            db.session.add(vt)
+            db.session.commit()
+            flash(f'Fahrzeugtyp \u201e{vt.name}\u201c wurde angelegt.', 'success')
+        return redirect(url_for('admin.vehicle_types'))
+    all_types = VehicleType.query.order_by(VehicleType.name).all()
+    return render_template('admin/vehicle_types.html', form=form, vehicle_types=all_types)
+
+
+@admin_bp.route('/vehicle-types/<uid>/delete', methods=['POST'])
+@login_required
+@admin_required
+def vehicle_type_delete(uid):
+    vt = VehicleType.query.get_or_404(uid)
+    if vt.scooters or vt.tariffs:
+        flash(f'Fahrzeugtyp \u201e{vt.name}\u201c kann nicht gel\u00f6scht werden, da noch Fahrzeuge oder Tarife damit verkn\u00fcpft sind.', 'warning')
+        return redirect(url_for('admin.vehicle_types'))
+    db.session.delete(vt)
+    db.session.commit()
+    flash(f'Fahrzeugtyp \u201e{vt.name}\u201c gel\u00f6scht.', 'success')
+    return redirect(url_for('admin.vehicle_types'))
+
+
+# ---------------------------------------------------------------------------
 # Tarife
 # ---------------------------------------------------------------------------
+
+def _vehicle_type_choices():
+    types = VehicleType.query.order_by(VehicleType.name).all()
+    return [(vt.uid, vt.name) for vt in types]
+
 
 @admin_bp.route('/tariffs', methods=['GET', 'POST'])
 @login_required
 @admin_required
 def tariffs():
     form = TariffForm()
+    form.vehicle_type_uid.choices = _vehicle_type_choices()
     if form.validate_on_submit():
-        active = Tariff.get_active()
+        active = Tariff.get_active(vehicle_type_uid=form.vehicle_type_uid.data)
         if active:
             active.is_active = False
             active.valid_to = form.valid_from.data
         new_tariff = Tariff(
+            vehicle_type_uid=form.vehicle_type_uid.data,
             base_price=form.base_price.data,
             minute_price=form.minute_price.data,
             valid_from=form.valid_from.data,
@@ -197,10 +243,12 @@ def tariffs():
         flash('Neuer Tarif aktiviert.', 'success')
         return redirect(url_for('admin.tariffs'))
     all_tariffs = Tariff.query.order_by(Tariff.valid_from.desc()).all()
-    active_tariff = Tariff.get_active()
+    vehicle_types_list = VehicleType.query.order_by(VehicleType.name).all()
+    active_tariffs = {vt.uid: Tariff.get_active(vt.uid) for vt in vehicle_types_list}
     return render_template(
         'admin/tariffs.html',
         form=form,
         all_tariffs=all_tariffs,
-        active_tariff=active_tariff,
+        active_tariffs=active_tariffs,
+        vehicle_types=vehicle_types_list,
     )

@@ -106,9 +106,9 @@ def ride_start(scooter_uid):
         flash('Bitte hinterlege zuerst eine Zahlungsmethode.', 'warning')
         return redirect(url_for('main.payment_methods'))
 
-    tariff = Tariff.get_active()
+    tariff = Tariff.get_active(vehicle_type_uid=scooter.vehicle_type_uid)
     if not tariff:
-        flash('Kein aktiver Tarif vorhanden. Bitte Administrator kontaktieren.', 'danger')
+        flash('Kein aktiver Tarif für diesen Fahrzeugtyp vorhanden. Bitte Administrator kontaktieren.', 'danger')
         return redirect(url_for('main.scooters'))
 
     ride = Ride(

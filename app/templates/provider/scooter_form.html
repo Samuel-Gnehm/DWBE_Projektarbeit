@@ -2,6 +2,21 @@
 
 {% block title %}{{ title }} – E-Scooter Verleih{% endblock %}
 
+{% block head %}
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<style>
+  #location-map {
+    height: 300px;
+    border-radius: var(--radius);
+    border: 1px solid var(--border-color);
+    margin-bottom: 0.5rem;
+    cursor: crosshair;
+  }
+  .leaflet-popup-content-wrapper { background: #1f2937; color: #f9fafb; border: 1px solid rgba(255,255,255,0.1); }
+  .leaflet-popup-tip { background: #1f2937; }
+</style>
+{% endblock %}
+
 {% block content %}
 <div class="page-header">
     <h1>{{ title }}</h1>
@@ -11,6 +26,14 @@
     <div class="card-body">
         <form method="POST">
             {{ form.hidden_tag() }}
+
+            <div class="mb-3">
+                {{ form.vehicle_type_uid.label(class='form-label') }}
+                {{ form.vehicle_type_uid(class='form-select' + (' is-invalid' if form.vehicle_type_uid.errors else '')) }}
+                {% for error in form.vehicle_type_uid.errors %}
+                    <div class="invalid-feedback">{{ error }}</div>
+                {% endfor %}
+            </div>
 
             <div class="mb-3">
                 {{ form.model.label(class='form-label') }}
@@ -28,20 +51,24 @@
                 {% endfor %}
             </div>
 
-            <div class="row g-3 mb-3">
-                <div class="col">
-                    {{ form.latitude.label(class='form-label') }}
-                    {{ form.latitude(class='form-control' + (' is-invalid' if form.latitude.errors else ''), placeholder='z.B. 47.376887') }}
-                    {% for error in form.latitude.errors %}
-                        <div class="invalid-feedback">{{ error }}</div>
-                    {% endfor %}
-                </div>
-                <div class="col">
-                    {{ form.longitude.label(class='form-label') }}
-                    {{ form.longitude(class='form-control' + (' is-invalid' if form.longitude.errors else ''), placeholder='z.B. 8.541694') }}
-                    {% for error in form.longitude.errors %}
-                        <div class="invalid-feedback">{{ error }}</div>
-                    {% endfor %}
+            <div class="mb-3">
+                <label class="form-label">Standort (auf Karte klicken)</label>
+                <div id="location-map"></div>
+                <div class="row g-3">
+                    <div class="col">
+                        {{ form.latitude.label(class='form-label') }}
+                        {{ form.latitude(class='form-control' + (' is-invalid' if form.latitude.errors else ''), placeholder='z.B. 47.376887', id='input-lat') }}
+                        {% for error in form.latitude.errors %}
+                            <div class="invalid-feedback">{{ error }}</div>
+                        {% endfor %}
+                    </div>
+                    <div class="col">
+                        {{ form.longitude.label(class='form-label') }}
+                        {{ form.longitude(class='form-control' + (' is-invalid' if form.longitude.errors else ''), placeholder='z.B. 8.541694', id='input-lng') }}
+                        {% for error in form.longitude.errors %}
+                            <div class="invalid-feedback">{{ error }}</div>
+                        {% endfor %}
+                    </div>
                 </div>
             </div>
 
@@ -60,4 +87,55 @@
         </form>
     </div>
 </div>
+{% endblock %}
+
+{% block scripts %}
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+const inputLat = document.getElementById('input-lat');
+const inputLng = document.getElementById('input-lng');
+
+const initLat = parseFloat(inputLat.value) || 47.3769;
+const initLng = parseFloat(inputLng.value) || 8.5417;
+const initZoom = inputLat.value ? 15 : 12;
+
+const map = L.map('location-map').setView([initLat, initLng], initZoom);
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+  attribution: '© OpenStreetMap',
+  maxZoom: 19
+}).addTo(map);
+
+let marker = null;
+if (inputLat.value && inputLng.value) {
+  marker = L.marker([initLat, initLng]).addTo(map);
+}
+
+map.on('click', function(e) {
+  const lat = e.latlng.lat.toFixed(6);
+  const lng = e.latlng.lng.toFixed(6);
+  inputLat.value = lat;
+  inputLng.value = lng;
+  if (marker) {
+    marker.setLatLng(e.latlng);
+  } else {
+    marker = L.marker(e.latlng).addTo(map);
+  }
+});
+
+function syncMapFromInputs() {
+  const lat = parseFloat(inputLat.value);
+  const lng = parseFloat(inputLng.value);
+  if (!isNaN(lat) && !isNaN(lng)) {
+    if (marker) {
+      marker.setLatLng([lat, lng]);
+    } else {
+      marker = L.marker([lat, lng]).addTo(map);
+    }
+    map.setView([lat, lng], map.getZoom());
+  }
+}
+
+inputLat.addEventListener('change', syncMapFromInputs);
+inputLng.addEventListener('change', syncMapFromInputs);
+</script>
 {% endblock %}

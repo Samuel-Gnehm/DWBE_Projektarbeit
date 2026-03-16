@@ -18,37 +18,46 @@
 </div>
 {% endif %}
 
-<div class="row g-3">
+<div class="row g-3 mb-4">
     <div class="col-md-4">
-        <div class="stat-card h-100">
-            <div class="stat-icon">&#128740;</div>
-            <div class="stat-label">Verfügbare Scooter</div>
-            <p class="mt-2 mb-3" style="color:var(--text-muted); font-size:0.9rem;">Finde einen freien Scooter in deiner Nähe.</p>
-            <a href="/scooters" class="btn btn-primary btn-sm">Scooter anzeigen</a>
+        <div class="stat-card">
+            <div class="stat-icon">&#128756;</div>
+            <div class="stat-label">Verfügbare Fahrzeuge</div>
+            <p class="mt-2 mb-0" style="color:var(--text-muted); font-size:0.9rem;">Finde ein freies Fahrzeug in deiner Nähe.</p>
         </div>
     </div>
     <div class="col-md-4">
-        <div class="stat-card h-100">
+        <div class="stat-card">
             <div class="stat-icon icon-info">&#128203;</div>
             <div class="stat-label">Meine Fahrten</div>
             <div class="stat-value">{{ completed_count }}</div>
             <div class="stat-sub">abgeschlossene {{ 'Fahrt' if completed_count == 1 else 'Fahrten' }}</div>
-            <a href="/rides/history" class="btn btn-outline-secondary btn-sm mt-3">Fahrt-Historie</a>
         </div>
     </div>
     <div class="col-md-4">
-        <div class="stat-card h-100">
+        <div class="stat-card">
             <div class="stat-icon icon-success">&#128179;</div>
-            <div class="stat-label">Zahlungsmethode</div>
-            <div class="mt-2 mb-3" style="font-size:0.9375rem;">
+            <div class="stat-label">Zahlungsmittel</div>
+            <div class="mt-2 mb-0" style="font-size:0.9375rem;">
                 {% if active_payment %}
                     <span style="color:var(--text); font-weight:500;">{{ active_payment.kartenidentifier_maskiert }}</span>
                 {% else %}
                     <span class="text-muted">Keine hinterlegt</span>
                 {% endif %}
             </div>
-            <a href="/payment-methods" class="btn btn-outline-secondary btn-sm">Verwalten</a>
         </div>
     </div>
+</div>
+
+<div class="page-header mt-4">
+    <h4 class="mb-0">Schnellzugriff</h4>
+</div>
+<div class="quick-actions">
+    <a href="/scooters" class="btn btn-outline-primary">Fahrzeuge anzeigen</a>
+    <a href="/rides/history" class="btn btn-outline-primary">Fahrt-Historie</a>
+    <a href="/payment-methods" class="btn btn-outline-primary">Zahlungsmittel verwalten</a>
+    {% if active_ride %}
+        <a href="/rides/active" class="btn btn-warning">Aktive Fahrt</a>
+    {% endif %}
 </div>
 {% endblock %}

@@ -11,6 +11,8 @@ class Scooter(db.Model):
                     default=lambda: str(uuid.uuid4()))
     uid_provider = db.Column(db.String(36),
                              db.ForeignKey('users.uid'), nullable=False)
+    vehicle_type_uid = db.Column(db.String(36),
+                                 db.ForeignKey('vehicle_types.uid'), nullable=True)
     model = db.Column(db.String(100), nullable=False)
     qr_code = db.Column(db.String(100), unique=True, nullable=False,
                         default=lambda: str(uuid.uuid4()))

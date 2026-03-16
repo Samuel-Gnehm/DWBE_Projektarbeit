@@ -10,49 +10,94 @@
     {% block head %}{% endblock %}
 </head>
 <body>
-    <nav class="navbar navbar-expand-lg">
-        <div class="container">
+    <!-- Sidebar Overlay -->
+    <div class="sidebar-overlay" id="sidebarOverlay" onclick="closeSidebar()"></div>
+
+    <!-- Sidebar -->
+    <aside class="sidebar" id="sidebar">
+        <div class="sidebar-header">
+            <a class="sidebar-brand" href="/">
+                <span class="brand-icon">&#9889;</span>
+                E-Scooter Verleih
+            </a>
+            <button class="sidebar-close" onclick="closeSidebar()" aria-label="Schliessen">&times;</button>
+        </div>
+
+        <nav class="sidebar-nav">
+            {% if current_user.is_authenticated %}
+                <div class="sidebar-user">
+                    <span class="sidebar-username">{{ current_user.username }}</span>
+                </div>
+                <div class="sidebar-divider"></div>
+
+                {% if current_user.user_rolle == 'admin' %}
+                    <span class="sidebar-section-label">Admin</span>
+                    <a class="sidebar-link" href="{{ url_for('admin.dashboard') }}">Dashboard</a>
+                    <a class="sidebar-link" href="{{ url_for('admin.users') }}">User</a>
+                    <a class="sidebar-link" href="{{ url_for('admin.scooters') }}">Fahrzeuge</a>
+                    <a class="sidebar-link" href="{{ url_for('admin.rides') }}">Fahrten</a>
+                    <a class="sidebar-link" href="{{ url_for('admin.transactions') }}">Transaktionen</a>
+                    <a class="sidebar-link" href="{{ url_for('admin.vehicle_types') }}">Fahrzeugtypen</a>
+                    <a class="sidebar-link" href="{{ url_for('admin.tariffs') }}">Tarife</a>
+                {% endif %}
+
+                {% if current_user.user_rolle == 'provider' %}
+                    <span class="sidebar-section-label">Anbieter</span>
+                    <a class="sidebar-link" href="{{ url_for('provider.dashboard') }}">Dashboard</a>
+                    <a class="sidebar-link" href="{{ url_for('provider.scooters') }}">Meine Fahrzeuge</a>
+                    <a class="sidebar-link" href="{{ url_for('provider.tariffs') }}">Tarife</a>
+                {% endif %}
+
+                {% if current_user.user_rolle == 'user' %}
+                    <span class="sidebar-section-label">Menü</span>
+                    <a class="sidebar-link" href="{{ url_for('main.dashboard') }}">Dashboard</a>
+                    <a class="sidebar-link" href="/scooters">Fahrzeuge</a>
+                    <a class="sidebar-link" href="/rides/history">Meine Fahrten</a>
+                    <a class="sidebar-link" href="/payment-methods">Zahlungsmittel</a>
+                    {% if active_ride %}
+                        <a class="sidebar-link sidebar-link-warning" href="/rides/active">Aktive Fahrt</a>
+                    {% endif %}
+                {% endif %}
+
+                <div class="sidebar-divider"></div>
+                <a class="sidebar-link sidebar-link-logout" href="{{ url_for('auth.logout') }}">Logout</a>
+            {% else %}
+                <a class="sidebar-link" href="{{ url_for('auth.login') }}">Login</a>
+                <a class="sidebar-link" href="{{ url_for('auth.register') }}">Registrieren</a>
+            {% endif %}
+        </nav>
+    </aside>
+
+    <!-- Top Navbar (nur Brand + Hamburger) -->
+    <nav class="navbar">
+        <div class="container d-flex align-items-center justify-content-between">
             <a class="navbar-brand" href="/">
                 <span class="brand-icon">&#9889;</span>
                 E-Scooter Verleih
             </a>
-            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarMain">
-                <span class="navbar-toggler-icon"></span>
+            <button class="hamburger-btn" onclick="openSidebar()" aria-label="Menü öffnen">
+                <span></span>
+                <span></span>
+                <span></span>
             </button>
-            <div class="collapse navbar-collapse" id="navbarMain">
-                <div class="navbar-nav ms-auto align-items-lg-center">
-                    {% if current_user.is_authenticated %}
-                        {% if current_user.user_rolle == 'admin' %}
-                            <a class="nav-link" href="{{ url_for('admin.dashboard') }}">Dashboard</a>
-                            <a class="nav-link" href="{{ url_for('admin.users') }}">User</a>
-                            <a class="nav-link" href="{{ url_for('admin.scooters') }}">Scooter</a>
-                            <a class="nav-link" href="{{ url_for('admin.rides') }}">Fahrten</a>
-                            <a class="nav-link" href="{{ url_for('admin.transactions') }}">Transaktionen</a>
-                            <a class="nav-link" href="{{ url_for('admin.tariffs') }}">Tarife</a>
-                        {% endif %}
-                        {% if current_user.user_rolle == 'provider' %}
-                            <a class="nav-link" href="{{ url_for('provider.dashboard') }}">Dashboard</a>
-                            <a class="nav-link" href="{{ url_for('provider.scooters') }}">Meine Scooter</a>
-                            <a class="nav-link" href="{{ url_for('provider.tariffs') }}">Tarife</a>
-                        {% endif %}
-                        {% if current_user.user_rolle == 'user' %}
-                            <a class="nav-link" href="/scooters">Scooter</a>
-                            <a class="nav-link" href="/rides/history">Meine Fahrten</a>
-                            <a class="nav-link" href="/payment-methods">Zahlung</a>
-                            {% if active_ride %}
-                                <a class="nav-link text-warning" href="/rides/active">&#9889; Aktive Fahrt</a>
-                            {% endif %}
-                        {% endif %}
-                        <span class="navbar-text">{{ current_user.username }}</span>
-                        <a class="nav-link" href="{{ url_for('auth.logout') }}">Logout</a>
-                    {% else %}
-                        <a class="nav-link" href="{{ url_for('auth.login') }}">Login</a>
-                        <a class="nav-link" href="{{ url_for('auth.register') }}">Registrieren</a>
-                    {% endif %}
-                </div>
-            </div>
         </div>
     </nav>
+
+    <script>
+        function openSidebar() {
+            document.getElementById('sidebar').classList.add('open');
+            document.getElementById('sidebarOverlay').classList.add('visible');
+            document.body.style.overflow = 'hidden';
+        }
+        function closeSidebar() {
+            document.getElementById('sidebar').classList.remove('open');
+            document.getElementById('sidebarOverlay').classList.remove('visible');
+            document.body.style.overflow = '';
+        }
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'Escape') closeSidebar();
+        });
+    </script>
 
     <div class="container main-container">
         {% with messages = get_flashed_messages(with_categories=true) %}

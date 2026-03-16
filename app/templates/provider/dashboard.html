@@ -5,14 +5,21 @@
 {% block content %}
 <div class="page-header">
     <h1>Willkommen, {{ current_user.vorname }}! &#128075;</h1>
-    <p class="text-muted mb-0">Übersicht deiner Scooter-Flotte</p>
+    <p class="text-muted mb-0">Übersicht deiner Fahrzeug-Flotte</p>
 </div>
+
+{% if low_battery_count > 0 %}
+<div class="alert alert-warning d-flex align-items-center gap-2 mb-4">
+    &#9889; <strong>{{ low_battery_count }} Fahrzeug{{ '' if low_battery_count == 1 else 'e' }}</strong> {{ 'hat' if low_battery_count == 1 else 'haben' }} weniger als 25% Akku und {{ 'muss' if low_battery_count == 1 else 'müssen' }} aufgeladen werden.
+    <a href="{{ url_for('provider.scooters') }}" class="alert-link ms-1">Zur Übersicht</a>
+</div>
+{% endif %}
 
 <div class="row g-3 mb-4">
     <div class="col-md-4">
         <div class="stat-card">
-            <div class="stat-icon">&#128740;</div>
-            <div class="stat-label">Meine Scooter</div>
+            <div class="stat-icon">&#128756;</div>
+            <div class="stat-label">Meine Fahrzeuge</div>
             <div class="stat-value">{{ scooter_count }}</div>
         </div>
     </div>
@@ -25,28 +32,33 @@
     </div>
     <div class="col-md-4">
         <div class="stat-card">
-            <div class="stat-icon {% if active_tariff %}icon-success{% else %}icon-danger{% endif %}">&#128176;</div>
-            <div class="stat-label">Aktiver Tarif</div>
-            {% if active_tariff %}
-                <div class="mt-2" style="font-size:0.9375rem;">
-                    <div><span class="text-muted">Basis:</span> <strong>CHF {{ active_tariff.base_price }}</strong></div>
-                    <div><span class="text-muted">Pro Minute:</span> <strong>CHF {{ active_tariff.minute_price }}</strong></div>
-                </div>
+            <div class="stat-icon icon-info">&#128176;</div>
+            <div class="stat-label">Aktive Tarife</div>
+            {% if active_tariffs %}
+                <ul class="list-unstyled mb-0 mt-2" style="font-size:0.875rem;">
+                {% for vt, tariff in active_tariffs %}
+                    <li class="mb-1">
+                        <span class="text-muted">{{ vt.name }}:</span>
+                        {% if tariff %}
+                            <strong>CHF {{ '%.2f'|format(tariff.base_price) }}</strong> + <strong>CHF {{ '%.2f'|format(tariff.minute_price) }}/Min.</strong>
+                        {% else %}
+                            <span style="color:var(--danger);">kein Tarif</span>
+                        {% endif %}
+                    </li>
+                {% endfor %}
+                </ul>
             {% else %}
-                <div style="color:var(--danger); font-weight:600; margin-top:0.5rem;">Kein Tarif aktiv</div>
+                <div style="color:var(--danger); font-weight:600; margin-top:0.5rem;">Keine Fahrzeugtypen vorhanden</div>
             {% endif %}
         </div>
     </div>
 </div>
 
-{% if low_battery_count > 0 %}
-<div class="alert alert-warning d-flex align-items-center gap-2 mb-4">
-    &#9889; <strong>{{ low_battery_count }} Scooter</strong> {{ 'hat' if low_battery_count == 1 else 'haben' }} weniger als 25% Akku und {{ 'muss' if low_battery_count == 1 else 'müssen' }} aufgeladen werden.
-    <a href="{{ url_for('provider.scooters') }}" class="alert-link ms-1">Zur Übersicht</a>
+<div class="page-header mt-4">
+    <h4 class="mb-0">Schnellzugriff</h4>
 </div>
-{% endif %}
-
 <div class="quick-actions">
-    <a href="{{ url_for('provider.scooters') }}" class="btn btn-primary">&#128740; Scooter verwalten</a>
+    <a href="{{ url_for('provider.scooters') }}" class="btn btn-outline-primary">Fahrzeuge verwalten</a>
+    <a href="{{ url_for('provider.tariffs') }}" class="btn btn-outline-primary">Tarife anzeigen</a>
 </div>
 {% endblock %}

@@ -3,27 +3,34 @@
 {% block title %}Tarife – E-Scooter Verleih{% endblock %}
 
 {% block content %}
-<div class="page-header d-flex justify-content-between align-items-center flex-wrap gap-2">
+<div class="page-header">
     <h1>&#128176; Tarife</h1>
-    <a href="{{ url_for('provider.tariff_add') }}" class="btn btn-primary">+ Neuen Tarif anlegen</a>
 </div>
 
-{% if active_tariff %}
-<div class="card mb-4" style="max-width:480px; border-color:rgba(16,185,129,0.4);">
-    <div class="card-header" style="color:var(--success);">&#9989; Aktiver Tarif</div>
-    <div class="card-body">
-        <dl class="row mb-0">
-            <dt class="col-sm-5">Basispreis</dt>
-            <dd class="col-sm-7">CHF {{ active_tariff.base_price }}</dd>
-            <dt class="col-sm-5">Preis pro Minute</dt>
-            <dd class="col-sm-7">CHF {{ active_tariff.minute_price }}</dd>
-            <dt class="col-sm-5">Gültig ab</dt>
-            <dd class="col-sm-7">{{ active_tariff.valid_from }}</dd>
-        </dl>
+{% if active_tariffs %}
+<h4 class="mb-3">Aktive Tarife pro Fahrzeugtyp</h4>
+<div class="row g-3 mb-5">
+    {% for vt, tariff in active_tariffs %}
+    <div class="col-sm-6 col-lg-4">
+        <div class="card h-100 {% if tariff %}border-success{% else %}border-danger{% endif %}">
+            <div class="card-header {% if tariff %}text-success{% else %}text-danger{% endif %}">
+                {% if tariff %}&#9989;{% else %}&#9888;{% endif %} {{ vt.name }}
+            </div>
+            <div class="card-body">
+                {% if tariff %}
+                <p class="mb-1"><span class="text-muted">Basispreis:</span> <strong>CHF {{ '%.2f'|format(tariff.base_price) }}</strong></p>
+                <p class="mb-1"><span class="text-muted">Pro Minute:</span> <strong>CHF {{ '%.2f'|format(tariff.minute_price) }}</strong></p>
+                <p class="mb-0"><span class="text-muted">Gültig ab:</span> {{ tariff.valid_from.strftime('%d.%m.%Y') if tariff.valid_from else '–' }}</p>
+                {% else %}
+                <p class="text-muted mb-0 small">Kein aktiver Tarif.</p>
+                {% endif %}
+            </div>
+        </div>
     </div>
+    {% endfor %}
 </div>
 {% else %}
-<div class="alert alert-warning mb-4">Kein aktiver Tarif vorhanden.</div>
+<div class="alert alert-warning mb-4">Noch keine Fahrzeugtypen angelegt.</div>
 {% endif %}
 
 <h4 class="mb-3">Tarif-Historie</h4>
@@ -32,6 +39,7 @@
     <table class="table table-striped align-middle">
         <thead>
             <tr>
+                <th>Fahrzeugtyp</th>
                 <th>Basispreis (CHF)</th>
                 <th>Pro Minute (CHF)</th>
                 <th>Gültig ab</th>
@@ -42,6 +50,7 @@
         <tbody>
             {% for tariff in all_tariffs %}
             <tr>
+                <td>{{ tariff.vehicle_type.name if tariff.vehicle_type else '–' }}</td>
                 <td>{{ tariff.base_price }}</td>
                 <td>{{ tariff.minute_price }}</td>
                 <td>{{ tariff.valid_from }}</td>

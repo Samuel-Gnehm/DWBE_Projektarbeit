@@ -1,0 +1,67 @@
+{% extends 'base.html' %}
+{% block title %}Fahrzeugtypen – Admin{% endblock %}
+{% block content %}
+<div class="page-header d-flex justify-content-between align-items-center flex-wrap gap-2">
+    <h1>&#128663; Fahrzeugtypen</h1>
+</div>
+
+{% if vehicle_types %}
+<div class="table-responsive mb-5">
+    <table class="table table-striped table-hover align-middle">
+        <thead>
+            <tr>
+                <th>Name</th>
+                <th>Beschreibung</th>
+                <th>Fahrzeuge</th>
+                <th>Aktionen</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for vt in vehicle_types %}
+            <tr>
+                <td><strong>{{ vt.name }}</strong></td>
+                <td class="text-muted">{{ vt.description or '–' }}</td>
+                <td>{{ vt.scooters | length }}</td>
+                <td>
+                    <form method="POST" action="{{ url_for('admin.vehicle_type_delete', uid=vt.uid) }}"
+                          onsubmit="return confirm('Fahrzeugtyp wirklich löschen?')">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <button type="submit" class="btn btn-sm btn-outline-danger"
+                                {% if vt.scooters or vt.tariffs %}disabled title="Noch in Verwendung"{% endif %}>
+                            Löschen
+                        </button>
+                    </form>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% else %}
+<div class="alert alert-info mb-4">Noch keine Fahrzeugtypen vorhanden.</div>
+{% endif %}
+
+<div class="card" style="max-width:480px;">
+    <div class="card-header">Neuen Fahrzeugtyp anlegen</div>
+    <div class="card-body">
+        <form method="POST">
+            {{ form.hidden_tag() }}
+            <div class="mb-3">
+                {{ form.name.label(class='form-label') }}
+                {{ form.name(class='form-control' + (' is-invalid' if form.name.errors else '')) }}
+                {% for err in form.name.errors %}
+                    <div class="invalid-feedback">{{ err }}</div>
+                {% endfor %}
+            </div>
+            <div class="mb-4">
+                {{ form.description.label(class='form-label') }}
+                {{ form.description(class='form-control', rows=2, placeholder='Optional: kurze Beschreibung') }}
+                {% for err in form.description.errors %}
+                    <div class="invalid-feedback">{{ err }}</div>
+                {% endfor %}
+            </div>
+            <button type="submit" class="btn btn-primary">Fahrzeugtyp anlegen</button>
+        </form>
+    </div>
+</div>
+{% endblock %}

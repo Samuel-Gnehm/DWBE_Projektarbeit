@@ -1,6 +1,6 @@
 {% extends 'base.html' %}
 
-{% block title %}Meine Scooter – E-Scooter Verleih{% endblock %}
+{% block title %}Meine Fahrzeuge – E-Scooter Verleih{% endblock %}
 
 {% block head %}
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
@@ -13,8 +13,8 @@
 
 {% block content %}
 <div class="page-header d-flex justify-content-between align-items-center flex-wrap gap-2">
-    <h1>&#128740; Meine Scooter</h1>
-    <a href="{{ url_for('provider.scooter_add') }}" class="btn btn-primary">+ Scooter hinzufügen</a>
+    <h1>&#128740; Meine Fahrzeuge</h1>
+    <a href="{{ url_for('provider.scooter_add') }}" class="btn btn-primary">+ Fahrzeug hinzufügen</a>
 </div>
 
 {% set scooters_with_loc = scooters | selectattr('latitude') | list %}
@@ -27,6 +27,7 @@
     <table class="table table-striped table-hover align-middle">
         <thead>
             <tr>
+                <th>Fahrzeugtyp</th>
                 <th>Modell</th>
                 <th>QR-Code</th>
                 <th>Status</th>
@@ -38,6 +39,7 @@
         <tbody>
             {% for scooter in scooters %}
             <tr {% if scooter.battery_level < 25 %}class="table-row-low-battery"{% endif %}>
+                <td>{{ scooter.vehicle_type.name if scooter.vehicle_type else '–' }}</td>
                 <td><strong>{{ scooter.model }}</strong></td>
                 <td><small class="text-muted font-monospace">{{ scooter.qr_code }}</small></td>
                 <td>
@@ -66,7 +68,7 @@
                            class="btn btn-sm btn-outline-primary">Bearbeiten</a>
                         <form method="POST"
                               action="{{ url_for('provider.scooter_delete', uid=scooter.uid) }}"
-                              onsubmit="return confirm('Scooter wirklich deaktivieren?')">
+                              onsubmit="return confirm('Fahrzeug wirklich deaktivieren?')">
                             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                             <button type="submit" class="btn btn-sm btn-danger">Deaktivieren</button>
                         </form>
@@ -79,8 +81,8 @@
 </div>
 {% else %}
 <div class="alert alert-info mt-2">
-    Sie haben noch keine Scooter hinzugefügt.
-    <a href="{{ url_for('provider.scooter_add') }}" class="alert-link">Jetzt ersten Scooter hinzufügen.</a>
+    Sie haben noch keine Fahrzeuge hinzugefügt.
+    <a href="{{ url_for('provider.scooter_add') }}" class="alert-link">Jetzt erstes Fahrzeug hinzufügen.</a>
 </div>
 {% endif %}
 {% endblock %}

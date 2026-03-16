@@ -7,10 +7,16 @@ from flask_login import login_required, current_user
 from app.extensions import db
 from app.models.scooter import Scooter
 from app.models.tariff import Tariff
+from app.models.vehicle_type import VehicleType
 from app.utils import provider_required
 
 from . import provider_bp
 from .forms import ScooterForm
+
+
+def _vehicle_type_choices():
+    types = VehicleType.query.order_by(VehicleType.name).all()
+    return [(vt.uid, vt.name) for vt in types]
 
 
 # ---------------------------------------------------------------------------
@@ -25,7 +31,8 @@ def dashboard():
     active_rides = Scooter.query.filter_by(
         uid_provider=current_user.uid, status='rented'
     ).count()
-    active_tariff = Tariff.get_active()
+    vehicle_types_list = VehicleType.query.order_by(VehicleType.name).all()
+    active_tariffs = [(vt, Tariff.get_active(vt.uid)) for vt in vehicle_types_list]
     low_battery_count = Scooter.query.filter(
         Scooter.uid_provider == current_user.uid,
         Scooter.battery_level < 25,
@@ -34,7 +41,7 @@ def dashboard():
         'provider/dashboard.html',
         scooter_count=scooter_count,
         active_rides=active_rides,
-        active_tariff=active_tariff,
+        active_tariffs=active_tariffs,
         low_battery_count=low_battery_count,
     )
 
@@ -56,10 +63,12 @@ def scooters():
 @provider_required
 def scooter_add():
     form = ScooterForm()
+    form.vehicle_type_uid.choices = _vehicle_type_choices()
     if form.validate_on_submit():
         new_status = form.status.data
         scooter = Scooter(
             uid_provider=current_user.uid,
+            vehicle_type_uid=form.vehicle_type_uid.data,
             qr_code=str(uuid.uuid4()),
             model=form.model.data,
             battery_level=form.battery_level.data,
@@ -71,9 +80,9 @@ def scooter_add():
         )
         db.session.add(scooter)
         db.session.commit()
-        flash('Scooter erfolgreich hinzugefügt.', 'success')
+        flash('Fahrzeug erfolgreich hinzugefügt.', 'success')
         return redirect(url_for('provider.scooters'))
-    return render_template('provider/scooter_form.html', form=form, title='Scooter hinzufügen')
+    return render_template('provider/scooter_form.html', form=form, title='Fahrzeug hinzufügen')
 
 
 @provider_bp.route('/scooters/<uid>/edit', methods=['GET', 'POST'])
@@ -84,7 +93,9 @@ def scooter_edit(uid):
     if scooter.uid_provider != current_user.uid:
         abort(403)
     form = ScooterForm(obj=scooter)
+    form.vehicle_type_uid.choices = _vehicle_type_choices()
     if form.validate_on_submit():
+        scooter.vehicle_type_uid = form.vehicle_type_uid.data
         scooter.model = form.model.data
         scooter.battery_level = form.battery_level.data
         scooter.latitude = form.latitude.data
@@ -103,10 +114,10 @@ def scooter_edit(uid):
                 scooter.maintenance_since = datetime.utcnow()
             scooter.status = new_status
         db.session.commit()
-        flash('Scooter erfolgreich aktualisiert.', 'success')
+        flash('Fahrzeug erfolgreich aktualisiert.', 'success')
         return redirect(url_for('provider.scooters'))
     return render_template(
-        'provider/scooter_form.html', form=form, title='Scooter bearbeiten', scooter=scooter
+        'provider/scooter_form.html', form=form, title='Fahrzeug bearbeiten', scooter=scooter
     )
 
 
@@ -118,11 +129,11 @@ def scooter_delete(uid):
     if scooter.uid_provider != current_user.uid:
         abort(403)
     if scooter.status == 'rented':
-        flash('Scooter ist gerade verliehen und kann nicht deaktiviert werden.', 'warning')
+        flash('Fahrzeug ist gerade verliehen und kann nicht deaktiviert werden.', 'warning')
         return redirect(url_for('provider.scooters'))
     scooter.status = 'disabled'
     db.session.commit()
-    flash('Scooter deaktiviert.', 'success')
+    flash('Fahrzeug deaktiviert.', 'success')
     return redirect(url_for('provider.scooters'))
 
 
@@ -134,11 +145,12 @@ def scooter_delete(uid):
 @login_required
 @provider_required
 def tariffs():
-    active_tariff = Tariff.get_active()
+    vehicle_types_list = VehicleType.query.order_by(VehicleType.name).all()
+    active_tariffs = [(vt, Tariff.get_active(vt.uid)) for vt in vehicle_types_list]
     all_tariffs = Tariff.query.order_by(Tariff.valid_from.desc()).all()
     return render_template(
         'provider/tariffs.html',
-        active_tariff=active_tariff,
+        active_tariffs=active_tariffs,
         all_tariffs=all_tariffs,
     )
 

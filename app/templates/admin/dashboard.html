@@ -23,8 +23,8 @@
     </div>
     <div class="col-md-3 col-6">
         <div class="stat-card">
-            <div class="stat-icon icon-success">&#128740;</div>
-            <div class="stat-label">Scooter gesamt</div>
+            <div class="stat-icon icon-success">&#128756;</div>
+            <div class="stat-label">Fahrzeuge gesamt</div>
             <div class="stat-value">{{ total_scooters }}</div>
             <div class="stat-sub">Verfügbar: {{ active_scooters }} &nbsp;&middot;&nbsp; Verliehen: {{ rented_scooters }}</div>
         </div>
@@ -51,17 +51,24 @@
         </div>
     </div>
     <div class="col-md-6">
-        <div class="stat-card {% if not active_tariff %}border-danger{% endif %}" style="{% if not active_tariff %}border-color:rgba(239,68,68,0.4){% endif %}">
-            <div class="stat-icon {% if active_tariff %}icon-success{% else %}icon-danger{% endif %}">&#128178;</div>
-            <div class="stat-label">Aktiver Tarif</div>
-            {% if active_tariff %}
-                <div class="mt-1">
-                    <span class="text-muted">Basis:</span> <strong>CHF {{ '%.2f'|format(active_tariff.base_price) }}</strong>
-                    &nbsp;&middot;&nbsp;
-                    <span class="text-muted">Pro Min.:</span> <strong>CHF {{ '%.2f'|format(active_tariff.minute_price) }}</strong>
-                </div>
+        <div class="stat-card">
+            <div class="stat-icon icon-info">&#128178;</div>
+            <div class="stat-label">Aktive Tarife</div>
+            {% if active_tariffs %}
+                <ul class="list-unstyled mb-0 mt-2" style="font-size:0.9rem;">
+                {% for vt, tariff in active_tariffs %}
+                    <li class="mb-1">
+                        <span class="text-muted">{{ vt.name }}:</span>
+                        {% if tariff %}
+                            <strong>CHF {{ '%.2f'|format(tariff.base_price) }}</strong> + <strong>CHF {{ '%.2f'|format(tariff.minute_price) }}/Min.</strong>
+                        {% else %}
+                            <span style="color:var(--danger);">kein Tarif</span>
+                        {% endif %}
+                    </li>
+                {% endfor %}
+                </ul>
             {% else %}
-                <div style="color:var(--danger); font-weight:600; margin-top:0.5rem;">Kein Tarif aktiv</div>
+                <div style="color:var(--danger); font-weight:600; margin-top:0.5rem;">Keine Fahrzeugtypen vorhanden</div>
             {% endif %}
         </div>
     </div>
@@ -71,10 +78,10 @@
     <h4 class="mb-0">Schnellzugriff</h4>
 </div>
 <div class="quick-actions">
-    <a href="{{ url_for('admin.users') }}" class="btn btn-outline-primary">&#128100; Benutzer</a>
-    <a href="{{ url_for('admin.scooters') }}" class="btn btn-outline-primary">&#128740; Scooter</a>
-    <a href="{{ url_for('admin.rides') }}" class="btn btn-outline-primary">&#128337; Fahrten</a>
-    <a href="{{ url_for('admin.transactions') }}" class="btn btn-outline-primary">&#128176; Transaktionen</a>
-    <a href="{{ url_for('admin.tariffs') }}" class="btn btn-outline-primary">&#128178; Tarife</a>
+    <a href="{{ url_for('admin.users') }}" class="btn btn-outline-primary">Benutzer</a>
+    <a href="{{ url_for('admin.scooters') }}" class="btn btn-outline-primary">Fahrzeuge</a>
+    <a href="{{ url_for('admin.rides') }}" class="btn btn-outline-primary">Fahrten</a>
+    <a href="{{ url_for('admin.transactions') }}" class="btn btn-outline-primary">Transaktionen</a>
+    <a href="{{ url_for('admin.tariffs') }}" class="btn btn-outline-primary">Tarife</a>
 </div>
 {% endblock %}

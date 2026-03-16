@@ -4,6 +4,10 @@ from wtforms.validators import DataRequired, Length, NumberRange
 
 
 class ScooterForm(FlaskForm):
+    vehicle_type_uid = SelectField(
+        'Fahrzeugtyp',
+        validators=[DataRequired(message='Bitte einen Fahrzeugtyp wählen.')],
+    )
     model = StringField(
         'Modellbezeichnung',
         validators=[DataRequired(), Length(max=100)]
