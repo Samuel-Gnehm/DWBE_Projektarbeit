@@ -12,7 +12,7 @@
 <div class="alert alert-warning d-flex align-items-center gap-2 mb-4" role="alert">
     <span style="font-size:1.25rem;">&#9889;</span>
     <div>Du hast bereits eine aktive Fahrt.
-        <a href="/rides/active" class="alert-link">Zur aktiven Fahrt &rarr;</a>
+        <a href="{{ url_for('main.ride_active') }}" class="alert-link">Zur aktiven Fahrt &rarr;</a>
     </div>
 </div>
 {% endif %}
@@ -58,7 +58,7 @@
                     </li>
                 </ul>
                 {% if not active_ride %}
-                <form method="POST" action="/rides/start/{{ scooter.uid }}">
+                <form method="POST" action="{{ url_for('main.ride_start', scooter_uid=scooter.uid) }}">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                     <button type="submit" class="btn btn-success w-100">
                         &#9889; Fahrt starten

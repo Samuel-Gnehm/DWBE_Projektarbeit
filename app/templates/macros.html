@@ -1,0 +1,30 @@
+{% macro scooter_status_badge(status) %}
+    {% if status == 'available' %}
+        <span class="badge bg-success">Verfügbar</span>
+    {% elif status == 'rented' %}
+        <span class="badge bg-primary">Verliehen</span>
+    {% elif status == 'maintenance' %}
+        <span class="badge bg-warning">Wartung</span>
+    {% else %}
+        <span class="badge bg-secondary">Deaktiviert</span>
+    {% endif %}
+{% endmacro %}
+
+{% macro active_tariffs_list(active_tariffs) %}
+    {% if active_tariffs %}
+        <ul class="list-unstyled mb-0 mt-2" style="font-size:0.875rem;">
+        {% for vt, tariff in active_tariffs %}
+            <li class="mb-1">
+                <span class="text-muted">{{ vt.name }}:</span>
+                {% if tariff %}
+                    <strong>CHF {{ '%.2f'|format(tariff.base_price) }}</strong> + <strong>CHF {{ '%.2f'|format(tariff.minute_price) }}/Min.</strong>
+                {% else %}
+                    <span style="color:var(--danger);">kein Tarif</span>
+                {% endif %}
+            </li>
+        {% endfor %}
+        </ul>
+    {% else %}
+        <div style="color:var(--danger); font-weight:600; margin-top:0.5rem;">Keine Fahrzeugtypen vorhanden</div>
+    {% endif %}
+{% endmacro %}

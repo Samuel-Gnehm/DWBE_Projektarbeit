@@ -12,6 +12,9 @@
             <tr>
                 <th>Name</th>
                 <th>Beschreibung</th>
+                <th>m/Min.</th>
+                <th>Akku-Verbrauch %/Min.</th>
+                <th>Akku-Laden %/Min.</th>
                 <th>Fahrzeuge</th>
                 <th>Aktionen</th>
             </tr>
@@ -21,16 +24,23 @@
             <tr>
                 <td><strong>{{ vt.name }}</strong></td>
                 <td class="text-muted">{{ vt.description or '–' }}</td>
+                <td>{{ vt.meter_per_minute }}</td>
+                <td>{{ vt.battery_drain_per_minute }}</td>
+                <td>{{ vt.battery_charge_per_minute }}</td>
                 <td>{{ vt.scooters | length }}</td>
                 <td>
-                    <form method="POST" action="{{ url_for('admin.vehicle_type_delete', uid=vt.uid) }}"
-                          onsubmit="return confirm('Fahrzeugtyp wirklich löschen?')">
-                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                        <button type="submit" class="btn btn-sm btn-outline-danger"
-                                {% if vt.scooters or vt.tariffs %}disabled title="Noch in Verwendung"{% endif %}>
-                            Löschen
-                        </button>
-                    </form>
+                    <div class="d-flex gap-1">
+                        <a href="{{ url_for('admin.vehicle_type_edit', uid=vt.uid) }}"
+                           class="btn btn-sm btn-outline-primary">Bearbeiten</a>
+                        <form method="POST" action="{{ url_for('admin.vehicle_type_delete', uid=vt.uid) }}"
+                              onsubmit="return confirm('Fahrzeugtyp wirklich löschen?')">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                            <button type="submit" class="btn btn-sm btn-outline-danger"
+                                    {% if vt.scooters or vt.tariffs %}disabled title="Noch in Verwendung"{% endif %}>
+                                Löschen
+                            </button>
+                        </form>
+                    </div>
                 </td>
             </tr>
             {% endfor %}
@@ -41,24 +51,73 @@
 <div class="alert alert-info mb-4">Noch keine Fahrzeugtypen vorhanden.</div>
 {% endif %}
 
-<div class="card" style="max-width:480px;">
+{% if edit_vt %}
+<div class="card mb-4" style="max-width:520px;">
+    <div class="card-header">&#9998; „{{ edit_vt.name }}" bearbeiten</div>
+    <div class="card-body">
+        <form method="POST" action="{{ url_for('admin.vehicle_type_edit', uid=edit_vt.uid) }}">
+            {{ edit_form.hidden_tag() }}
+            <div class="mb-3">
+                {{ edit_form.name.label(class='form-label') }}
+                {{ edit_form.name(class='form-control' + (' is-invalid' if edit_form.name.errors else '')) }}
+                {% for err in edit_form.name.errors %}<div class="invalid-feedback">{{ err }}</div>{% endfor %}
+            </div>
+            <div class="mb-3">
+                {{ edit_form.description.label(class='form-label') }}
+                {{ edit_form.description(class='form-control', rows=2) }}
+            </div>
+            <div class="mb-3">
+                {{ edit_form.meter_per_minute.label(class='form-label') }}
+                {{ edit_form.meter_per_minute(class='form-control' + (' is-invalid' if edit_form.meter_per_minute.errors else '')) }}
+                {% for err in edit_form.meter_per_minute.errors %}<div class="invalid-feedback">{{ err }}</div>{% endfor %}
+            </div>
+            <div class="mb-3">
+                {{ edit_form.battery_drain_per_minute.label(class='form-label') }}
+                {{ edit_form.battery_drain_per_minute(class='form-control' + (' is-invalid' if edit_form.battery_drain_per_minute.errors else '')) }}
+                {% for err in edit_form.battery_drain_per_minute.errors %}<div class="invalid-feedback">{{ err }}</div>{% endfor %}
+            </div>
+            <div class="mb-4">
+                {{ edit_form.battery_charge_per_minute.label(class='form-label') }}
+                {{ edit_form.battery_charge_per_minute(class='form-control' + (' is-invalid' if edit_form.battery_charge_per_minute.errors else '')) }}
+                {% for err in edit_form.battery_charge_per_minute.errors %}<div class="invalid-feedback">{{ err }}</div>{% endfor %}
+            </div>
+            <div class="d-flex gap-2">
+                <button type="submit" class="btn btn-primary">Speichern</button>
+                <a href="{{ url_for('admin.vehicle_types') }}" class="btn btn-outline-secondary">Abbrechen</a>
+            </div>
+        </form>
+    </div>
+</div>
+{% endif %}
+
+<div class="card" style="max-width:520px;">
     <div class="card-header">Neuen Fahrzeugtyp anlegen</div>
     <div class="card-body">
-        <form method="POST">
+        <form method="POST" action="{{ url_for('admin.vehicle_types') }}">
             {{ form.hidden_tag() }}
             <div class="mb-3">
                 {{ form.name.label(class='form-label') }}
                 {{ form.name(class='form-control' + (' is-invalid' if form.name.errors else '')) }}
-                {% for err in form.name.errors %}
-                    <div class="invalid-feedback">{{ err }}</div>
-                {% endfor %}
+                {% for err in form.name.errors %}<div class="invalid-feedback">{{ err }}</div>{% endfor %}
             </div>
-            <div class="mb-4">
+            <div class="mb-3">
                 {{ form.description.label(class='form-label') }}
                 {{ form.description(class='form-control', rows=2, placeholder='Optional: kurze Beschreibung') }}
-                {% for err in form.description.errors %}
-                    <div class="invalid-feedback">{{ err }}</div>
-                {% endfor %}
+            </div>
+            <div class="mb-3">
+                {{ form.meter_per_minute.label(class='form-label') }}
+                {{ form.meter_per_minute(class='form-control' + (' is-invalid' if form.meter_per_minute.errors else ''), placeholder='z. B. 200') }}
+                {% for err in form.meter_per_minute.errors %}<div class="invalid-feedback">{{ err }}</div>{% endfor %}
+            </div>
+            <div class="mb-3">
+                {{ form.battery_drain_per_minute.label(class='form-label') }}
+                {{ form.battery_drain_per_minute(class='form-control' + (' is-invalid' if form.battery_drain_per_minute.errors else ''), placeholder='z. B. 1.00') }}
+                {% for err in form.battery_drain_per_minute.errors %}<div class="invalid-feedback">{{ err }}</div>{% endfor %}
+            </div>
+            <div class="mb-4">
+                {{ form.battery_charge_per_minute.label(class='form-label') }}
+                {{ form.battery_charge_per_minute(class='form-control' + (' is-invalid' if form.battery_charge_per_minute.errors else ''), placeholder='z. B. 4.00') }}
+                {% for err in form.battery_charge_per_minute.errors %}<div class="invalid-feedback">{{ err }}</div>{% endfor %}
             </div>
             <button type="submit" class="btn btn-primary">Fahrzeugtyp anlegen</button>
         </form>

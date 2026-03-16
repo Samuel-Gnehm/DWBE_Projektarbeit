@@ -14,11 +14,6 @@ from . import provider_bp
 from .forms import ScooterForm
 
 
-def _vehicle_type_choices():
-    types = VehicleType.query.order_by(VehicleType.name).all()
-    return [(vt.uid, vt.name) for vt in types]
-
-
 # ---------------------------------------------------------------------------
 # Dashboard
 # ---------------------------------------------------------------------------
@@ -31,8 +26,6 @@ def dashboard():
     active_rides = Scooter.query.filter_by(
         uid_provider=current_user.uid, status='rented'
     ).count()
-    vehicle_types_list = VehicleType.query.order_by(VehicleType.name).all()
-    active_tariffs = [(vt, Tariff.get_active(vt.uid)) for vt in vehicle_types_list]
     low_battery_count = Scooter.query.filter(
         Scooter.uid_provider == current_user.uid,
         Scooter.battery_level < 25,
@@ -41,7 +34,7 @@ def dashboard():
         'provider/dashboard.html',
         scooter_count=scooter_count,
         active_rides=active_rides,
-        active_tariffs=active_tariffs,
+        active_tariffs=VehicleType.with_active_tariffs(),
         low_battery_count=low_battery_count,
     )
 
@@ -63,7 +56,7 @@ def scooters():
 @provider_required
 def scooter_add():
     form = ScooterForm()
-    form.vehicle_type_uid.choices = _vehicle_type_choices()
+    form.vehicle_type_uid.choices = VehicleType.choices()
     if form.validate_on_submit():
         new_status = form.status.data
         scooter = Scooter(
@@ -93,7 +86,7 @@ def scooter_edit(uid):
     if scooter.uid_provider != current_user.uid:
         abort(403)
     form = ScooterForm(obj=scooter)
-    form.vehicle_type_uid.choices = _vehicle_type_choices()
+    form.vehicle_type_uid.choices = VehicleType.choices()
     if form.validate_on_submit():
         scooter.vehicle_type_uid = form.vehicle_type_uid.data
         scooter.model = form.model.data
@@ -103,13 +96,12 @@ def scooter_edit(uid):
         if scooter.status != 'rented':
             new_status = form.status.data
             old_status = scooter.status
-            # Leaving maintenance: apply accumulated charge (4% per minute, max 100)
             if old_status == 'maintenance' and new_status != 'maintenance':
                 if scooter.maintenance_since:
                     minutes = (datetime.utcnow() - scooter.maintenance_since).total_seconds() / 60
-                    scooter.battery_level = min(100, scooter.battery_level + int(minutes * 4))
+                    charge_rate = float(scooter.vehicle_type.battery_charge_per_minute)
+                    scooter.battery_level = min(100, scooter.battery_level + int(minutes * charge_rate))
                 scooter.maintenance_since = None
-            # Entering maintenance: record timestamp
             elif old_status != 'maintenance' and new_status == 'maintenance':
                 scooter.maintenance_since = datetime.utcnow()
             scooter.status = new_status
@@ -145,13 +137,9 @@ def scooter_delete(uid):
 @login_required
 @provider_required
 def tariffs():
-    vehicle_types_list = VehicleType.query.order_by(VehicleType.name).all()
-    active_tariffs = [(vt, Tariff.get_active(vt.uid)) for vt in vehicle_types_list]
     all_tariffs = Tariff.query.order_by(Tariff.valid_from.desc()).all()
     return render_template(
         'provider/tariffs.html',
-        active_tariffs=active_tariffs,
+        active_tariffs=VehicleType.with_active_tariffs(),
         all_tariffs=all_tariffs,
     )
-
-

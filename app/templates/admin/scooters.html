@@ -1,4 +1,5 @@
 {% extends 'base.html' %}
+{% from 'macros.html' import scooter_status_badge %}
 {% block title %}Alle Fahrzeuge – Admin{% endblock %}
 {% block content %}
 <div class="page-header">
@@ -33,17 +34,7 @@
                 <td>{{ scooter.vehicle_type.name if scooter.vehicle_type else '–' }}</td>
                 <td><strong>{{ scooter.model }}</strong></td>
                 <td><span class="text-muted">{{ scooter.provider.username if scooter.provider else '–' }}</span></td>
-                <td>
-                    {% if scooter.status == 'available' %}
-                        <span class="badge bg-success">verfügbar</span>
-                    {% elif scooter.status == 'rented' %}
-                        <span class="badge bg-primary">verliehen</span>
-                    {% elif scooter.status == 'maintenance' %}
-                        <span class="badge bg-warning">wartung</span>
-                    {% else %}
-                        <span class="badge bg-secondary">deaktiviert</span>
-                    {% endif %}
-                </td>
+                <td>{{ scooter_status_badge(scooter.status) }}</td>
                 <td>{{ scooter.battery_level }}</td>
                 <td>{{ scooter.gefahrene_km_gesamt }}</td>
                 <td><small class="text-muted font-monospace">{{ scooter.qr_code[:8] }}…</small></td>

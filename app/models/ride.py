@@ -27,6 +27,17 @@ class Ride(db.Model):
     transaction = db.relationship('Transaction', backref='ride',
                                   uselist=False, lazy=True)
 
+    @classmethod
+    def get_active_for(cls, user_uid):
+        return cls.query.filter_by(rider_uid=user_uid, endzeit=None).first()
+
+    @property
+    def duration_str(self):
+        from datetime import datetime
+        end = self.endzeit or datetime.utcnow()
+        total = int((end - self.startzeit).total_seconds())
+        return f'{total // 3600:02d}:{(total % 3600) // 60:02d}:{total % 60:02d}'
+
     def calculate_price(self):
         """Berechnet den Gesamtpreis der Fahrt: Basispreis + (Minutenpreis × Minuten)."""
         from decimal import Decimal

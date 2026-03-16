@@ -1,4 +1,5 @@
 {% extends 'base.html' %}
+{% from 'macros.html' import scooter_status_badge %}
 
 {% block title %}Meine Fahrzeuge – E-Scooter Verleih{% endblock %}
 
@@ -42,19 +43,7 @@
                 <td>{{ scooter.vehicle_type.name if scooter.vehicle_type else '–' }}</td>
                 <td><strong>{{ scooter.model }}</strong></td>
                 <td><small class="text-muted font-monospace">{{ scooter.qr_code }}</small></td>
-                <td>
-                    {% if scooter.status == 'available' %}
-                        <span class="badge bg-success">Verfügbar</span>
-                    {% elif scooter.status == 'rented' %}
-                        <span class="badge bg-primary">Verliehen</span>
-                    {% elif scooter.status == 'maintenance' %}
-                        <span class="badge bg-warning">Wartung</span>
-                    {% elif scooter.status == 'disabled' %}
-                        <span class="badge bg-secondary">Deaktiviert</span>
-                    {% else %}
-                        <span class="badge bg-secondary">{{ scooter.status }}</span>
-                    {% endif %}
-                </td>
+                <td>{{ scooter_status_badge(scooter.status) }}</td>
                 <td>
                     {{ scooter.battery_level }}%
                     {% if scooter.battery_level < 25 %}

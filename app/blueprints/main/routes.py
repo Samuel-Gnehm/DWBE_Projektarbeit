@@ -41,21 +41,15 @@ def index():
 @login_required
 @rider_required
 def dashboard():
-    active_ride = Ride.query.filter_by(
-        rider_uid=current_user.uid, endzeit=None
-    ).first()
     completed_count = Ride.query.filter(
         Ride.rider_uid == current_user.uid,
         Ride.endzeit != None  # noqa: E711
     ).count()
-    active_payment = PaymentMethod.query.filter_by(
-        rider_uid=current_user.uid, is_active=True
-    ).first()
     return render_template(
         'main/dashboard.html',
-        active_ride=active_ride,
+        active_ride=Ride.get_active_for(current_user.uid),
         completed_count=completed_count,
-        active_payment=active_payment,
+        active_payment=PaymentMethod.get_active_for(current_user.uid),
     )
 
 
@@ -67,14 +61,10 @@ def dashboard():
 @login_required
 @rider_required
 def scooters():
-    available_scooters = Scooter.query.filter_by(status='available').all()
-    active_ride = Ride.query.filter_by(
-        rider_uid=current_user.uid, endzeit=None
-    ).first()
     return render_template(
         'main/scooters.html',
-        scooters=available_scooters,
-        active_ride=active_ride,
+        scooters=Scooter.query.filter_by(status='available').all(),
+        active_ride=Ride.get_active_for(current_user.uid),
     )
 
 
@@ -92,16 +82,11 @@ def ride_start(scooter_uid):
         flash('Dieser Scooter ist nicht verfügbar.', 'warning')
         return redirect(url_for('main.scooters'))
 
-    active_ride = Ride.query.filter_by(
-        rider_uid=current_user.uid, endzeit=None
-    ).first()
-    if active_ride:
+    if Ride.get_active_for(current_user.uid):
         flash('Du hast bereits eine aktive Fahrt.', 'warning')
         return redirect(url_for('main.ride_active'))
 
-    payment = PaymentMethod.query.filter_by(
-        rider_uid=current_user.uid, is_active=True
-    ).first()
+    payment = PaymentMethod.get_active_for(current_user.uid)
     if not payment:
         flash('Bitte hinterlege zuerst eine Zahlungsmethode.', 'warning')
         return redirect(url_for('main.payment_methods'))
@@ -135,29 +120,22 @@ def ride_start(scooter_uid):
 @login_required
 @rider_required
 def ride_active():
-    ride = Ride.query.filter_by(
-        rider_uid=current_user.uid, endzeit=None
-    ).first()
+    ride = Ride.get_active_for(current_user.uid)
     if not ride:
         flash('Keine aktive Fahrt.', 'info')
         return redirect(url_for('main.scooters'))
 
     now = datetime.utcnow()
-    duration = now - ride.startzeit
-    tariff = ride.tariff
     minuten = (now - ride.startzeit).total_seconds() / 60
-    vorschau = tariff.base_price + (tariff.minute_price * Decimal(str(round(minuten, 2))))
-    vorschau = round(vorschau, 2)
-
-    total_seconds = int(duration.total_seconds())
-    duration_str = f'{total_seconds // 3600:02d}:{(total_seconds % 3600) // 60:02d}:{total_seconds % 60:02d}'
+    tariff = ride.tariff
+    vorschau = round(tariff.base_price + (tariff.minute_price * Decimal(str(round(minuten, 2)))), 2)
 
     return render_template(
         'main/active_ride.html',
         ride=ride,
         scooter=ride.scooter,
         tariff=tariff,
-        duration_str=duration_str,
+        duration_str=ride.duration_str,
         vorschau=vorschau,
     )
 
@@ -181,13 +159,14 @@ def ride_end(ride_uid):
     if form.validate_on_submit():
         ride.endzeit = datetime.utcnow()
         minuten = (ride.endzeit - ride.startzeit).total_seconds() / 60
-        ride.gefahrene_km = Decimal(str(round(minuten * 0.2, 3)))
+        scooter = ride.scooter
+        vt = scooter.vehicle_type
+        ride.gefahrene_km = Decimal(str(round(minuten * vt.meter_per_minute / 1000, 3)))
         ride.gesamtpreis = ride.calculate_price()
 
-        scooter = ride.scooter
         scooter.status = 'available'
         scooter.gefahrene_km_gesamt += ride.gefahrene_km
-        scooter.battery_level = max(0, scooter.battery_level - int(minuten))
+        scooter.battery_level = max(0, scooter.battery_level - int(minuten * float(vt.battery_drain_per_minute)))
         try:
             drop_lat = request.form.get('drop_lat')
             drop_lng = request.form.get('drop_lng')
@@ -197,9 +176,7 @@ def ride_end(ride_uid):
         except Exception:
             pass
 
-        payment = PaymentMethod.query.filter_by(
-            rider_uid=current_user.uid, is_active=True
-        ).first()
+        payment = PaymentMethod.get_active_for(current_user.uid)
         transaction = Transaction(
             ride_uid=ride.uid,
             payment_method_uid=payment.uid,
@@ -211,17 +188,12 @@ def ride_end(ride_uid):
         flash(f'Fahrt beendet. Kosten: CHF {ride.gesamtpreis:.2f}', 'success')
         return redirect(url_for('main.ride_detail', ride_uid=ride.uid))
 
-    now = datetime.utcnow()
-    duration = now - ride.startzeit
-    total_seconds = int(duration.total_seconds())
-    duration_str = f'{total_seconds // 3600:02d}:{(total_seconds % 3600) // 60:02d}:{total_seconds % 60:02d}'
-
     return render_template(
         'main/end_ride.html',
         ride=ride,
         scooter=ride.scooter,
         form=form,
-        duration_str=duration_str,
+        duration_str=ride.duration_str,
     )
 
 

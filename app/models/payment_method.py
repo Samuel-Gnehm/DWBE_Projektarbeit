@@ -20,5 +20,9 @@ class PaymentMethod(db.Model):
     transactions = db.relationship('Transaction', backref='payment_method',
                                    lazy=True)
 
+    @classmethod
+    def get_active_for(cls, user_uid):
+        return cls.query.filter_by(rider_uid=user_uid, is_active=True).first()
+
     def __repr__(self):
         return f'<PaymentMethod {self.kartenidentifier_maskiert}>'

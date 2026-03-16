@@ -1,4 +1,5 @@
 {% extends 'base.html' %}
+{% from 'macros.html' import active_tariffs_list %}
 
 {% block title %}Provider Dashboard – E-Scooter Verleih{% endblock %}
 
@@ -34,22 +35,7 @@
         <div class="stat-card">
             <div class="stat-icon icon-info">&#128176;</div>
             <div class="stat-label">Aktive Tarife</div>
-            {% if active_tariffs %}
-                <ul class="list-unstyled mb-0 mt-2" style="font-size:0.875rem;">
-                {% for vt, tariff in active_tariffs %}
-                    <li class="mb-1">
-                        <span class="text-muted">{{ vt.name }}:</span>
-                        {% if tariff %}
-                            <strong>CHF {{ '%.2f'|format(tariff.base_price) }}</strong> + <strong>CHF {{ '%.2f'|format(tariff.minute_price) }}/Min.</strong>
-                        {% else %}
-                            <span style="color:var(--danger);">kein Tarif</span>
-                        {% endif %}
-                    </li>
-                {% endfor %}
-                </ul>
-            {% else %}
-                <div style="color:var(--danger); font-weight:600; margin-top:0.5rem;">Keine Fahrzeugtypen vorhanden</div>
-            {% endif %}
+            {{ active_tariffs_list(active_tariffs) }}
         </div>
     </div>
 </div>

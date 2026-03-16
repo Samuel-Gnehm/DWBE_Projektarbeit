@@ -19,5 +19,10 @@ class Transaction(db.Model):
     created_at = db.Column(db.DateTime, nullable=False,
                            default=datetime.utcnow)
 
+    @classmethod
+    def total_revenue(cls):
+        from ..extensions import db
+        return db.session.query(db.func.sum(cls.betrag)).filter_by(status='completed').scalar() or 0
+
     def __repr__(self):
         return f'<Transaction {self.uid[:8]} status={self.status}>'

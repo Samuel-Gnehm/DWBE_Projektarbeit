@@ -1,5 +1,5 @@
 from flask_wtf import FlaskForm
-from wtforms import DecimalField, DateField, StringField, SelectField, TextAreaField
+from wtforms import DecimalField, DateField, IntegerField, StringField, SelectField, TextAreaField
 from wtforms.validators import DataRequired, NumberRange, Length, Optional
 
 
@@ -33,4 +33,18 @@ class VehicleTypeForm(FlaskForm):
     description = TextAreaField(
         'Beschreibung',
         validators=[Optional(), Length(max=255)]
+    )
+    meter_per_minute = IntegerField(
+        'Meter / Minute',
+        validators=[DataRequired(), NumberRange(min=1, max=10000)]
+    )
+    battery_drain_per_minute = DecimalField(
+        'Akku-Verbrauch % / Minute (Fahrt)',
+        places=2,
+        validators=[DataRequired(), NumberRange(min=0.01, max=100)]
+    )
+    battery_charge_per_minute = DecimalField(
+        'Akku-Laden % / Minute (Wartung)',
+        places=2,
+        validators=[DataRequired(), NumberRange(min=0.01, max=100)]
     )

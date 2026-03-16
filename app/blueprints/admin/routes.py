@@ -29,9 +29,6 @@ def dashboard():
     rented_scooters = Scooter.query.filter_by(status='rented').count()
     total_rides     = Ride.query.filter(Ride.endzeit != None).count()  # noqa: E711
     active_rides    = Ride.query.filter_by(endzeit=None).count()
-    total_revenue   = db.session.query(db.func.sum(Transaction.betrag)).filter_by(status='completed').scalar() or 0
-    vehicle_types_list = VehicleType.query.order_by(VehicleType.name).all()
-    active_tariffs = [(vt, Tariff.get_active(vt.uid)) for vt in vehicle_types_list]
     return render_template(
         'admin/dashboard.html',
         total_users=total_users,
@@ -41,8 +38,8 @@ def dashboard():
         rented_scooters=rented_scooters,
         total_rides=total_rides,
         active_rides=active_rides,
-        total_revenue=total_revenue,
-        active_tariffs=active_tariffs,
+        total_revenue=Transaction.total_revenue(),
+        active_tariffs=VehicleType.with_active_tariffs(),
     )
 
 
@@ -164,11 +161,10 @@ def transactions():
     if status_filter in ('pending', 'completed', 'failed'):
         query = query.filter_by(status=status_filter)
     transactions_list = query.order_by(Transaction.created_at.desc()).all()
-    total_revenue = db.session.query(db.func.sum(Transaction.betrag)).filter_by(status='completed').scalar() or 0
     return render_template(
         'admin/transactions.html',
         transactions=transactions_list,
-        total_revenue=total_revenue,
+        total_revenue=Transaction.total_revenue(),
         status_filter=status_filter,
     )
 
@@ -187,13 +183,48 @@ def vehicle_types():
         if existing:
             flash(f'Fahrzeugtyp \u201e{form.name.data}\u201c existiert bereits.', 'warning')
         else:
-            vt = VehicleType(name=form.name.data, description=form.description.data or None)
+            vt = VehicleType(
+                name=form.name.data,
+                description=form.description.data or None,
+                meter_per_minute=form.meter_per_minute.data,
+                battery_drain_per_minute=form.battery_drain_per_minute.data,
+                battery_charge_per_minute=form.battery_charge_per_minute.data,
+            )
             db.session.add(vt)
             db.session.commit()
             flash(f'Fahrzeugtyp \u201e{vt.name}\u201c wurde angelegt.', 'success')
         return redirect(url_for('admin.vehicle_types'))
     all_types = VehicleType.query.order_by(VehicleType.name).all()
     return render_template('admin/vehicle_types.html', form=form, vehicle_types=all_types)
+
+
+@admin_bp.route('/vehicle-types/<uid>/edit', methods=['GET', 'POST'])
+@login_required
+@admin_required
+def vehicle_type_edit(uid):
+    vt = VehicleType.query.get_or_404(uid)
+    edit_form = VehicleTypeForm(obj=vt)
+    if edit_form.validate_on_submit():
+        existing = VehicleType.query.filter_by(name=edit_form.name.data).first()
+        if existing and existing.uid != vt.uid:
+            flash(f'Fahrzeugtyp \u201e{edit_form.name.data}\u201c existiert bereits.', 'warning')
+        else:
+            vt.name = edit_form.name.data
+            vt.description = edit_form.description.data or None
+            vt.meter_per_minute = edit_form.meter_per_minute.data
+            vt.battery_drain_per_minute = edit_form.battery_drain_per_minute.data
+            vt.battery_charge_per_minute = edit_form.battery_charge_per_minute.data
+            db.session.commit()
+            flash(f'Fahrzeugtyp \u201e{vt.name}\u201c aktualisiert.', 'success')
+            return redirect(url_for('admin.vehicle_types'))
+    all_types = VehicleType.query.order_by(VehicleType.name).all()
+    return render_template(
+        'admin/vehicle_types.html',
+        form=VehicleTypeForm(),
+        edit_form=edit_form,
+        edit_vt=vt,
+        vehicle_types=all_types,
+    )
 
 
 @admin_bp.route('/vehicle-types/<uid>/delete', methods=['POST'])
@@ -214,17 +245,12 @@ def vehicle_type_delete(uid):
 # Tarife
 # ---------------------------------------------------------------------------
 
-def _vehicle_type_choices():
-    types = VehicleType.query.order_by(VehicleType.name).all()
-    return [(vt.uid, vt.name) for vt in types]
-
-
 @admin_bp.route('/tariffs', methods=['GET', 'POST'])
 @login_required
 @admin_required
 def tariffs():
     form = TariffForm()
-    form.vehicle_type_uid.choices = _vehicle_type_choices()
+    form.vehicle_type_uid.choices = VehicleType.choices()
     if form.validate_on_submit():
         active = Tariff.get_active(vehicle_type_uid=form.vehicle_type_uid.data)
         if active:
