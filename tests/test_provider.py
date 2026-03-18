@@ -1,10 +1,11 @@
 from tests.conftest import login
 
 
-def test_T06_scooter_anlegen(client, db, provider):
+def test_T06_scooter_anlegen(client, db, provider, vehicle_type):
     """T06: Provider legt neuen Scooter an – erscheint in DB mit Status available."""
     login(client, 'testprovider', 'Test1234!')
     response = client.post('/provider/scooters/add', data={
+        'vehicle_type_uid': vehicle_type.uid,
         'model': 'Xiaomi Pro 2',
         'battery_level': 85,
         'latitude': '47.376900',

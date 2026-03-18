@@ -2,6 +2,7 @@ import pytest
 from app import create_app
 from app.extensions import db as _db
 from app.models import User, Scooter, Tariff, PaymentMethod
+from app.models.vehicle_type import VehicleType
 
 
 @pytest.fixture(scope='session')
@@ -78,11 +79,27 @@ def provider_b(db):
 
 
 @pytest.fixture(scope='function')
-def scooter(db, provider):
+def vehicle_type(db):
+    """Erstellt einen VehicleType für Tests."""
+    vt = VehicleType(
+        name='Test E-Scooter',
+        description='Test vehicle type',
+        meter_per_minute=200,
+        battery_drain_per_minute=1.0,
+        battery_charge_per_minute=4.0,
+    )
+    db.session.add(vt)
+    db.session.commit()
+    return vt
+
+
+@pytest.fixture(scope='function')
+def scooter(db, provider, vehicle_type):
     """Erstellt einen Scooter für Provider."""
     import uuid
     s = Scooter(
         uid_provider=provider.uid,
+        vehicle_type_uid=vehicle_type.uid,
         model='TestScooter X1',
         qr_code=str(uuid.uuid4()),
         status='available',
@@ -97,10 +114,11 @@ def scooter(db, provider):
 
 
 @pytest.fixture(scope='function')
-def active_tariff(db):
-    """Erstellt einen aktiven Tarif."""
+def active_tariff(db, vehicle_type):
+    """Erstellt einen aktiven Tarif für den Test-VehicleType."""
     from datetime import date
     t = Tariff(
+        vehicle_type_uid=vehicle_type.uid,
         base_price=2.00,
         minute_price=0.25,
         valid_from=date.today(),
