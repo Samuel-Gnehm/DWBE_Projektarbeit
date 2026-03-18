@@ -54,6 +54,7 @@ def create_app(config_name='development'):
     app.register_blueprint(main_bp)
     app.register_blueprint(auth_bp)
     app.register_blueprint(api_bp)
+    csrf.exempt(api_bp)
     app.register_blueprint(provider_bp, url_prefix='/provider')
     app.register_blueprint(admin_bp, url_prefix='/admin')
 
