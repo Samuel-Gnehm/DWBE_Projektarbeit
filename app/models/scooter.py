@@ -39,6 +39,8 @@ class Scooter(db.Model):
             'battery_level': self.battery_level,
             'latitude': float(self.latitude) if self.latitude else None,
             'longitude': float(self.longitude) if self.longitude else None,
+            'vehicle_type_uid': self.vehicle_type_uid,
+            'vehicle_type_name': self.vehicle_type.name if self.vehicle_type else None,
         }
 
     def __repr__(self):

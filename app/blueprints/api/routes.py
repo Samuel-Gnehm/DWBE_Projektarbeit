@@ -137,19 +137,42 @@ def api_get_ride(uid):
 
 # ---------------------------------------------------------------------------
 # GET /api/tariffs/active  –  public
+# Optional: ?vehicle_type_uid=<uid> für einen spezifischen Typ
 # ---------------------------------------------------------------------------
 
 @api_bp.route('/tariffs/active', methods=['GET'])
 def api_get_active_tariff():
-    tariff = Tariff.get_active()
-    if not tariff:
+    from app.models.vehicle_type import VehicleType
+    vehicle_type_uid = request.args.get('vehicle_type_uid')
+
+    if vehicle_type_uid:
+        tariff = Tariff.get_active(vehicle_type_uid)
+        if not tariff:
+            return jsonify({'error': 'Kein aktiver Tarif für diesen Fahrzeugtyp'}), 404
+        return jsonify({
+            'uid': tariff.uid,
+            'vehicle_type_uid': tariff.vehicle_type_uid,
+            'base_price': float(tariff.base_price),
+            'minute_price': float(tariff.minute_price),
+            'valid_from': tariff.valid_from.isoformat() if tariff.valid_from else None
+        }), 200
+
+    # Alle aktiven Tarife gruppiert nach Fahrzeugtyp
+    results = VehicleType.with_active_tariffs()
+    data = []
+    for vt, tariff in results:
+        if tariff:
+            data.append({
+                'uid': tariff.uid,
+                'vehicle_type_uid': vt.uid,
+                'vehicle_type_name': vt.name,
+                'base_price': float(tariff.base_price),
+                'minute_price': float(tariff.minute_price),
+                'valid_from': tariff.valid_from.isoformat() if tariff.valid_from else None
+            })
+    if not data:
         return jsonify({'error': 'Kein aktiver Tarif vorhanden'}), 404
-    return jsonify({
-        'uid': tariff.uid,
-        'base_price': float(tariff.base_price),
-        'minute_price': float(tariff.minute_price),
-        'valid_from': tariff.valid_from.isoformat() if tariff.valid_from else None
-    }), 200
+    return jsonify(data), 200
 
 
 # ---------------------------------------------------------------------------
