@@ -22,3 +22,9 @@ env/
 # OS
 .DS_Store
 Thumbs.db
+
+# terraform
+terraform/.terraform/
+*.tfstate
+*.tfstate.backup
+terraform.tfvars

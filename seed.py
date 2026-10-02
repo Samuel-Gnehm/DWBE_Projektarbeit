@@ -2,8 +2,9 @@
 from app import create_app
 from app.extensions import db
 from app.models import User
+import os
 
-app = create_app('development')
+app = create_app(os.environ.get('FLASK_ENV', 'development'))
 
 with app.app_context():
     if not User.query.filter_by(username='admin').first():
