@@ -9,6 +9,11 @@ terraform {
 
 provider "azurerm" {
   features {}
+  # Verhindert, dass Terraform bei jedem Lauf ~30 Azure Resource Provider
+  # (auch ungenutzte) registrieren will. Bei Netzwerk-/Firewall-Problemen
+  # bricht genau das mit "connection may have been reset" ab.
+  # (skip_provider_registration ist die Syntax für azurerm-Provider v3.x,
+  # das gepinnte required_providers-Version weiter oben im File)
   skip_provider_registration = true
 }
 
@@ -67,6 +72,7 @@ resource "azurerm_container_app" "app" {
   container_app_environment_id = azurerm_container_app_environment.env.id
   resource_group_name          = azurerm_resource_group.rg.name
   revision_mode                = "Single"
+  workload_profile_name        = "Consumption"
 
   template {
     min_replicas = 0 # Scale-to-Zero in ruhigen Phasen -> Kernargument für die Skalierungs-Reflexion
@@ -118,6 +124,7 @@ resource "azurerm_container_app" "app" {
   ingress {
     external_enabled = true
     target_port       = 5000
+    transport         = "http"
 
     traffic_weight {
       percentage      = 100

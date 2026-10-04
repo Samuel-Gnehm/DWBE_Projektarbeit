@@ -29,6 +29,7 @@ variable "jwt_secret_key" {
 }
 
 variable "docker_image" {
-  description = "Dein Image auf Docker Hub, z.B. docker.io/<dein-user>/scooter-app:latest"
+  description = "Container-Image auf Docker Hub (öffentlich)"
   type        = string
+  default     = "samuelgnehm/scooter-app:v2"
 }
