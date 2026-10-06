@@ -1,6 +1,6 @@
 variable "location" {
   type    = string
-  default = "switzerlandnorth"
+  default = "francecentral"
 }
 
 variable "unique_suffix" {
