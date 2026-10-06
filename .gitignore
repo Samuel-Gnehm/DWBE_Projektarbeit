@@ -23,8 +23,12 @@ env/
 .DS_Store
 Thumbs.db
 
-# terraform
-terraform/.terraform/
+# Terraform
+**/.terraform/
 *.tfstate
-*.tfstate.backup
+*.tfstate.*
 terraform.tfvars
+
+# Python
+__pycache__/
+*.pyc

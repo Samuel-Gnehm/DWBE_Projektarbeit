@@ -1,0 +1,19 @@
+# Nicht ins Container-Image: Secrets, Terraform-Dateien und Entwicklungsreste.
+# Ohne diese Datei kopiert "COPY . ." im Dockerfile alles aus dem Projektordner
+# ins Image, auch terraform.tfvars und terraform.tfstate (mit Klartext-Secrets).
+
+terraform/
+scripts/
+.git
+.gitignore
+.env
+.env.*
+*.tfstate
+*.tfstate.*
+*.tfvars
+**/.terraform
+__pycache__/
+*.pyc
+docs/
+tests/
+README.md
